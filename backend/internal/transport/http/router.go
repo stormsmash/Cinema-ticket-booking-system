@@ -14,14 +14,23 @@ type ReadinessChecker interface {
 	Check(context.Context) health.Report
 }
 
-func NewRouter(readiness ReadinessChecker) *gin.Engine {
+type Dependencies struct {
+	Readiness  ReadinessChecker
+	Screenings ScreeningService
+}
+
+func NewRouter(dependencies Dependencies) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 
 	api := router.Group("/api/v1")
 	api.GET("/health", liveness)
 	api.GET("/health/live", liveness)
-	api.GET("/health/ready", ready(readiness))
+	api.GET("/health/ready", ready(dependencies.Readiness))
+
+	screenings := newScreeningHandler(dependencies.Screenings)
+	api.GET("/screenings", screenings.list)
+	api.GET("/screenings/:screeningID/seats", screenings.seats)
 
 	return router
 }

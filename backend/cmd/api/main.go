@@ -19,6 +19,7 @@ import (
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/health"
 	mongostore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/mongodb"
 	redisstore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/redis"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/screening"
 	httptransport "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/transport/http"
 )
 
@@ -35,9 +36,9 @@ func run() error {
 	}
 
 	startupContext, cancelStartup := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelStartup()
 	mongoClient, err := mongostore.Connect(startupContext, cfg.MongoURI)
 	if err != nil {
-		cancelStartup()
 		return fmt.Errorf("connect MongoDB: %w", err)
 	}
 	defer disconnectMongo(mongoClient)
@@ -47,7 +48,6 @@ func run() error {
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
 	})
-	cancelStartup()
 	if err != nil {
 		return fmt.Errorf("connect Redis: %w", err)
 	}
@@ -57,7 +57,18 @@ func run() error {
 		}
 	}()
 
+	database := mongoClient.Database(cfg.MongoDatabase)
+	if err := mongostore.Bootstrap(startupContext, database); err != nil {
+		return fmt.Errorf("bootstrap MongoDB: %w", err)
+	}
+	cancelStartup()
+
 	log.Printf("connected to MongoDB database %q and Redis", cfg.MongoDatabase)
+
+	screeningRepository := screening.NewMongoRepository(
+		database.Collection(mongostore.CollectionScreenings),
+	)
+	screeningService := screening.NewService(screeningRepository)
 
 	readiness := health.NewService(map[string]health.CheckFunc{
 		"mongodb": func(ctx context.Context) error {
@@ -71,8 +82,11 @@ func run() error {
 	gin.SetMode(cfg.GinMode)
 
 	server := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           httptransport.NewRouter(readiness),
+		Addr: ":" + cfg.Port,
+		Handler: httptransport.NewRouter(httptransport.Dependencies{
+			Readiness:  readiness,
+			Screenings: screeningService,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
