@@ -5,7 +5,7 @@ backend/bin/
 backend/coverage.out
 
 # Node
-frontend/node_modules/
+node_modules/
 frontend/dist/
 
 # Editors and OS files

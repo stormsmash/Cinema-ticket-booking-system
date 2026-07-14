@@ -21,9 +21,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at 20% 10%, rgb(127 29 29 / 30%), transparent 34rem),
-    linear-gradient(145deg, #09090b 0%, #18181b 100%);
+  background: #09090b;
 }
 
 button,
@@ -33,7 +31,8 @@ select {
 }
 
 button:focus-visible,
-a:focus-visible {
+a:focus-visible,
+select:focus-visible {
   outline: 3px solid #fbbf24;
   outline-offset: 3px;
 }
