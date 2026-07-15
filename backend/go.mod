@@ -3,6 +3,7 @@ module github.com/stormsmash/Cinema-ticket-booking-system/backend
 go 1.26.3
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/gin-gonic/gin v1.12.0
 	github.com/redis/go-redis/v9 v9.21.0
 	go.mongodb.org/mongo-driver/v2 v2.5.0

@@ -11,8 +11,9 @@ small, tested milestones so each part can be explained and reviewed on its own.
 - Google OAuth creates or updates a user in MongoDB and stores a 24-hour session in Redis.
 - An authenticated user can hold a seat in Redis for 10 minutes and release it early.
 - The seat map shows current locks and identifies the lock owned by the signed-in user.
+- WebSocket updates keep open seat maps in sync when a hold is created, released, or expires.
 
-WebSocket updates, booking confirmation, and Kafka events are still to be implemented.
+Booking confirmation and Kafka events are still to be implemented.
 
 ## Run locally
 
@@ -51,8 +52,8 @@ Do not commit `.env` or the client secret. Production deployments must use HTTPS
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health/live` | API process health |
-| `GET` | `/health/ready` | MongoDB and Redis readiness |
+| `GET` | `/api/v1/health/live` | API process health |
+| `GET` | `/api/v1/health/ready` | MongoDB and Redis readiness |
 | `GET` | `/api/v1/auth/config` | Whether Google sign-in is configured |
 | `GET` | `/api/v1/auth/google` | Start Google OAuth |
 | `GET` | `/api/v1/auth/google/callback` | Google OAuth callback |
@@ -62,6 +63,12 @@ Do not commit `.env` or the client secret. Production deployments must use HTTPS
 | `GET` | `/api/v1/screenings/:screeningID/seats` | Seat map for one screening |
 | `POST` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Hold a seat for the current user |
 | `DELETE` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Release the current user's hold |
+| `GET` | `/api/v1/screenings/:screeningID/seat-events` | WebSocket stream for seat changes |
+
+The WebSocket event is only a change notification. After receiving it, the web app reloads the
+seat map so Redis remains the source of truth and lock ownership is calculated from the current
+session. Redis keyspace notifications must include string, generic, and expiry events; Docker
+Compose configures this automatically.
 
 ## Tests
 

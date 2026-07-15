@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/health"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/realtime"
 )
 
 type ReadinessChecker interface {
@@ -15,11 +16,13 @@ type ReadinessChecker interface {
 }
 
 type Dependencies struct {
-	Readiness  ReadinessChecker
-	Screenings ScreeningService
-	Auth       AuthService
-	AuthConfig AuthHandlerConfig
-	SeatLocks  SeatLockService
+	Readiness   ReadinessChecker
+	Screenings  ScreeningService
+	Auth        AuthService
+	AuthConfig  AuthHandlerConfig
+	SeatLocks   SeatLockService
+	SeatEvents  *realtime.Hub
+	FrontendURL string
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
@@ -43,6 +46,11 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 
 	screenings := newScreeningHandler(dependencies.Screenings, dependencies.SeatLocks)
 	seatLocks := newSeatLockHandler(dependencies.SeatLocks)
+	seatEvents := newSeatEventHandler(
+		dependencies.Screenings,
+		dependencies.SeatEvents,
+		dependencies.FrontendURL,
+	)
 	api.GET("/screenings", screenings.list)
 	api.GET(
 		"/screenings/:screeningID/seats",
@@ -58,6 +66,10 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 		"/screenings/:screeningID/seats/:seatID/lock",
 		auth.requireAuthentication(),
 		seatLocks.release,
+	)
+	api.GET(
+		"/screenings/:screeningID/seat-events",
+		seatEvents.stream,
 	)
 
 	return router

@@ -20,6 +20,7 @@ import (
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/health"
 	mongostore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/mongodb"
 	redisstore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/redis"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/realtime"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/screening"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/seatlock"
 	httptransport "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/transport/http"
@@ -93,6 +94,16 @@ func run() error {
 		seatLockStore,
 		cfg.SeatLockTTL,
 	)
+	eventHub := realtime.NewHub(200)
+	eventSource := realtime.NewRedisSeatEventSource(redisClient, cfg.RedisDB)
+	realtimeContext, stopRealtime := context.WithCancel(context.Background())
+	defer stopRealtime()
+	defer eventHub.Close()
+	go func() {
+		if err := eventSource.Run(realtimeContext, eventHub.Publish); err != nil {
+			log.Printf("seat event source stopped: %v", err)
+		}
+	}()
 
 	readiness := health.NewService(map[string]health.CheckFunc{
 		"mongodb": func(ctx context.Context) error {
@@ -108,10 +119,12 @@ func run() error {
 	server := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: httptransport.NewRouter(httptransport.Dependencies{
-			Readiness:  readiness,
-			Screenings: screeningService,
-			Auth:       authService,
-			SeatLocks:  seatLockService,
+			Readiness:   readiness,
+			Screenings:  screeningService,
+			Auth:        authService,
+			SeatLocks:   seatLockService,
+			SeatEvents:  eventHub,
+			FrontendURL: cfg.FrontendURL,
 			AuthConfig: httptransport.AuthHandlerConfig{
 				FrontendURL:  cfg.FrontendURL,
 				SessionTTL:   cfg.SessionTTL,
@@ -120,6 +133,10 @@ func run() error {
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	server.RegisterOnShutdown(func() {
+		stopRealtime()
+		eventHub.Close()
+	})
 
 	return serve(server, cfg.Port)
 }

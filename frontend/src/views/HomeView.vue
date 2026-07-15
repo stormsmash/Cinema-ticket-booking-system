@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import AuthStatus from '@/features/auth/components/AuthStatus.vue'
@@ -27,6 +27,7 @@ const {
 } = storeToRefs(store)
 
 onMounted(store.loadScreenings)
+onBeforeUnmount(store.stopRealtime)
 </script>
 
 <template>

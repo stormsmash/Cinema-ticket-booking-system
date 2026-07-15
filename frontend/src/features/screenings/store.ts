@@ -8,7 +8,8 @@ import {
   releaseSeatLock,
   ScreeningApiError,
 } from './api'
-import type { ScreeningSummary, SeatLock, SeatMap } from './types'
+import { subscribeToSeatEvents } from './realtime'
+import type { ScreeningSummary, SeatEvent, SeatLock, SeatMap } from './types'
 
 export const useScreeningStore = defineStore('screenings', () => {
   const screenings = ref<ScreeningSummary[]>([])
@@ -23,6 +24,8 @@ export const useScreeningStore = defineStore('screenings', () => {
   const lockError = ref('')
 
   let seatRequestNumber = 0
+  let stopSeatEvents: (() => void) | null = null
+  let realtimeRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
   async function loadScreenings() {
     isLoadingScreenings.value = true
@@ -46,36 +49,82 @@ export const useScreeningStore = defineStore('screenings', () => {
   }
 
   async function selectScreening(screeningID: string) {
+    stopRealtime()
     selectedScreeningID.value = screeningID
     seatMap.value = null
     activeLock.value = null
     lockError.value = ''
     seatsError.value = ''
-    isLoadingSeats.value = true
 
-    const requestNumber = ++seatRequestNumber
-
-    try {
-      const result = await fetchSeatMap(screeningID)
-      if (requestNumber === seatRequestNumber) {
-        seatMap.value = result
-        activeLock.value = lockFromSeatMap(result)
-      }
-    } catch {
-      if (requestNumber === seatRequestNumber) {
-        seatsError.value = 'Unable to load the seat map. Please try again.'
-      }
-    } finally {
-      if (requestNumber === seatRequestNumber) {
-        isLoadingSeats.value = false
-      }
+    const loaded = await loadSeatMap(screeningID, true)
+    if (loaded && selectedScreeningID.value === screeningID) {
+      startRealtime(screeningID)
     }
   }
 
   function reloadSeatMap() {
     if (selectedScreeningID.value) {
-      return selectScreening(selectedScreeningID.value)
+      return loadSeatMap(selectedScreeningID.value, seatMap.value === null)
     }
+  }
+
+  async function loadSeatMap(screeningID: string, showLoadingState: boolean) {
+    const requestNumber = ++seatRequestNumber
+    if (showLoadingState) isLoadingSeats.value = true
+
+    try {
+      const result = await fetchSeatMap(screeningID)
+      if (requestNumber !== seatRequestNumber || selectedScreeningID.value !== screeningID) {
+        return false
+      }
+
+      seatMap.value = result
+      activeLock.value = lockFromSeatMap(result)
+      seatsError.value = ''
+      return true
+    } catch {
+      if (
+        requestNumber === seatRequestNumber &&
+        selectedScreeningID.value === screeningID &&
+        !seatMap.value
+      ) {
+        seatsError.value = 'Unable to load the seat map. Please try again.'
+      }
+      return false
+    } finally {
+      if (requestNumber === seatRequestNumber && showLoadingState) {
+        isLoadingSeats.value = false
+      }
+    }
+  }
+
+  function startRealtime(screeningID: string) {
+    stopSeatEvents = subscribeToSeatEvents(
+      screeningID,
+      scheduleRealtimeRefresh,
+      () => void reloadSeatMap(),
+    )
+  }
+
+  function scheduleRealtimeRefresh(event: SeatEvent) {
+    const ownLockExpired =
+      event.type === 'seat.expired' && activeLock.value?.seat_id === event.seat_id
+
+    if (realtimeRefreshTimer) clearTimeout(realtimeRefreshTimer)
+    realtimeRefreshTimer = setTimeout(async () => {
+      realtimeRefreshTimer = null
+      await reloadSeatMap()
+      if (ownLockExpired && !activeLock.value) {
+        lockError.value = 'Your seat hold expired. Choose an available seat to try again.'
+      }
+    }, 75)
+  }
+
+  function stopRealtime() {
+    stopSeatEvents?.()
+    stopSeatEvents = null
+    if (realtimeRefreshTimer) clearTimeout(realtimeRefreshTimer)
+    realtimeRefreshTimer = null
   }
 
   async function lockSeat(seatID: string) {
@@ -146,6 +195,7 @@ export const useScreeningStore = defineStore('screenings', () => {
     lockSeat,
     unlockSeat,
     handleLockExpired,
+    stopRealtime,
   }
 })
 

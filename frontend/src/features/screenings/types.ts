@@ -41,3 +41,13 @@ export interface SeatLock {
   status: 'LOCKED'
   expires_at: string
 }
+
+export interface SeatEvent {
+  version: 1
+  type: 'seat.locked' | 'seat.released' | 'seat.expired'
+  screening_id: string
+  seat_id: string
+  status: 'LOCKED' | 'AVAILABLE'
+  expires_at?: string
+  occurred_at: string
+}
