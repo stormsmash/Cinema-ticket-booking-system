@@ -16,6 +16,7 @@ import (
 const (
 	CollectionScreenings = "screenings"
 	CollectionBookings   = "bookings"
+	CollectionUsers      = "users"
 )
 
 func Bootstrap(ctx context.Context, database *mongo.Database) error {
@@ -31,7 +32,24 @@ func Bootstrap(ctx context.Context, database *mongo.Database) error {
 }
 
 func createIndexes(ctx context.Context, database *mongo.Database) error {
-	_, err := database.Collection(CollectionScreenings).Indexes().CreateMany(ctx, []mongo.IndexModel{
+	_, err := database.Collection(CollectionUsers).Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			Keys: bson.D{{Key: "google_subject", Value: 1}},
+			Options: options.Index().
+				SetName("unique_google_subject").
+				SetUnique(true),
+		},
+		{
+			Keys: bson.D{{Key: "email", Value: 1}},
+			Options: options.Index().
+				SetName("user_email"),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("create user indexes: %w", err)
+	}
+
+	_, err = database.Collection(CollectionScreenings).Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys: bson.D{{Key: "starts_at", Value: 1}},
 			Options: options.Index().

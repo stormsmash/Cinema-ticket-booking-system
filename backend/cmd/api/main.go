@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 
+	authservice "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/auth"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/config"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/health"
 	mongostore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/mongodb"
@@ -69,6 +70,22 @@ func run() error {
 		database.Collection(mongostore.CollectionScreenings),
 	)
 	screeningService := screening.NewService(screeningRepository)
+	userRepository := authservice.NewMongoUserRepository(
+		database.Collection(mongostore.CollectionUsers),
+	)
+	sessionStore := authservice.NewRedisSessionStore(redisClient)
+	googleProvider := authservice.NewGoogleProvider(
+		cfg.GoogleClientID,
+		cfg.GoogleClientSecret,
+		cfg.GoogleRedirectURL,
+	)
+	authService := authservice.NewService(
+		googleProvider,
+		userRepository,
+		sessionStore,
+		cfg.SessionTTL,
+		cfg.GoogleOAuthEnabled(),
+	)
 
 	readiness := health.NewService(map[string]health.CheckFunc{
 		"mongodb": func(ctx context.Context) error {
@@ -86,6 +103,12 @@ func run() error {
 		Handler: httptransport.NewRouter(httptransport.Dependencies{
 			Readiness:  readiness,
 			Screenings: screeningService,
+			Auth:       authService,
+			AuthConfig: httptransport.AuthHandlerConfig{
+				FrontendURL:  cfg.FrontendURL,
+				SessionTTL:   cfg.SessionTTL,
+				CookieSecure: cfg.CookieSecure,
+			},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

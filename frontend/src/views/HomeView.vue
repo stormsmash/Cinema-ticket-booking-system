@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import AuthStatus from '@/features/auth/components/AuthStatus.vue'
 import ScreeningPicker from '@/features/screenings/components/ScreeningPicker.vue'
 import SeatGrid from '@/features/screenings/components/SeatGrid.vue'
 import { useScreeningStore } from '@/features/screenings/store'
@@ -33,7 +34,10 @@ onMounted(store.loadScreenings)
         </p>
       </div>
 
-      <SystemStatus />
+      <aside class="header-cards">
+        <AuthStatus />
+        <SystemStatus />
+      </aside>
     </header>
 
     <section class="booking-layout" aria-labelledby="booking-title">
@@ -113,6 +117,11 @@ onMounted(store.loadScreenings)
   grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
   gap: 3rem;
   align-items: end;
+}
+
+.header-cards {
+  display: grid;
+  gap: 1rem;
 }
 
 .eyebrow,

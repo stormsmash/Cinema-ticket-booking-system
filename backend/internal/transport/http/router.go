@@ -17,16 +17,28 @@ type ReadinessChecker interface {
 type Dependencies struct {
 	Readiness  ReadinessChecker
 	Screenings ScreeningService
+	Auth       AuthService
+	AuthConfig AuthHandlerConfig
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(
+		gin.LoggerWithConfig(gin.LoggerConfig{SkipQueryString: true}),
+		gin.Recovery(),
+	)
 
 	api := router.Group("/api/v1")
 	api.GET("/health", liveness)
 	api.GET("/health/live", liveness)
 	api.GET("/health/ready", ready(dependencies.Readiness))
+
+	auth := newAuthHandler(dependencies.Auth, dependencies.AuthConfig)
+	api.GET("/auth/config", auth.configuration)
+	api.GET("/auth/google", auth.google)
+	api.GET("/auth/google/callback", auth.googleCallback)
+	api.GET("/auth/me", auth.requireAuthentication(), auth.me)
+	api.POST("/auth/logout", auth.logout)
 
 	screenings := newScreeningHandler(dependencies.Screenings)
 	api.GET("/screenings", screenings.list)

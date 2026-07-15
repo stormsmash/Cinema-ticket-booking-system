@@ -4,25 +4,36 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 const (
-	defaultPort          = "8080"
-	defaultGinMode       = "debug"
-	defaultMongoURI      = "mongodb://localhost:27017/cinema?replicaSet=rs0&directConnection=true"
-	defaultMongoDatabase = "cinema"
-	defaultRedisAddress  = "localhost:6379"
-	defaultRedisDB       = "0"
+	defaultPort              = "8080"
+	defaultGinMode           = "debug"
+	defaultMongoURI          = "mongodb://localhost:27017/cinema?replicaSet=rs0&directConnection=true"
+	defaultMongoDatabase     = "cinema"
+	defaultRedisAddress      = "localhost:6379"
+	defaultRedisDB           = "0"
+	defaultGoogleRedirectURL = "http://localhost:3000/api/v1/auth/google/callback"
+	defaultFrontendURL       = "http://localhost:3000"
+	defaultSessionTTL        = "24h"
+	defaultCookieSecure      = "false"
 )
 
 type Config struct {
-	Port          string
-	GinMode       string
-	MongoURI      string
-	MongoDatabase string
-	RedisAddress  string
-	RedisPassword string
-	RedisDB       int
+	Port               string
+	GinMode            string
+	MongoURI           string
+	MongoDatabase      string
+	RedisAddress       string
+	RedisPassword      string
+	RedisDB            int
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURL  string
+	FrontendURL        string
+	SessionTTL         time.Duration
+	CookieSecure       bool
 }
 
 func Load() (Config, error) {
@@ -31,15 +42,35 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("REDIS_DB must be a non-negative integer")
 	}
 
+	sessionTTL, err := time.ParseDuration(valueOrDefault("SESSION_TTL", defaultSessionTTL))
+	if err != nil || sessionTTL <= 0 {
+		return Config{}, fmt.Errorf("SESSION_TTL must be a positive duration")
+	}
+
+	cookieSecure, err := strconv.ParseBool(valueOrDefault("COOKIE_SECURE", defaultCookieSecure))
+	if err != nil {
+		return Config{}, fmt.Errorf("COOKIE_SECURE must be true or false")
+	}
+
 	return Config{
-		Port:          valueOrDefault("PORT", defaultPort),
-		GinMode:       valueOrDefault("GIN_MODE", defaultGinMode),
-		MongoURI:      valueOrDefault("MONGO_URI", defaultMongoURI),
-		MongoDatabase: valueOrDefault("MONGO_DATABASE", defaultMongoDatabase),
-		RedisAddress:  valueOrDefault("REDIS_ADDRESS", defaultRedisAddress),
-		RedisPassword: os.Getenv("REDIS_PASSWORD"),
-		RedisDB:       redisDB,
+		Port:               valueOrDefault("PORT", defaultPort),
+		GinMode:            valueOrDefault("GIN_MODE", defaultGinMode),
+		MongoURI:           valueOrDefault("MONGO_URI", defaultMongoURI),
+		MongoDatabase:      valueOrDefault("MONGO_DATABASE", defaultMongoDatabase),
+		RedisAddress:       valueOrDefault("REDIS_ADDRESS", defaultRedisAddress),
+		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
+		RedisDB:            redisDB,
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleRedirectURL:  valueOrDefault("GOOGLE_REDIRECT_URL", defaultGoogleRedirectURL),
+		FrontendURL:        valueOrDefault("FRONTEND_URL", defaultFrontendURL),
+		SessionTTL:         sessionTTL,
+		CookieSecure:       cookieSecure,
 	}, nil
+}
+
+func (config Config) GoogleOAuthEnabled() bool {
+	return config.GoogleClientID != "" && config.GoogleClientSecret != ""
 }
 
 func valueOrDefault(key, fallback string) string {

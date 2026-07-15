@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadUsesDefaults(t *testing.T) {
 	for _, key := range []string{
@@ -11,6 +14,12 @@ func TestLoadUsesDefaults(t *testing.T) {
 		"REDIS_ADDRESS",
 		"REDIS_PASSWORD",
 		"REDIS_DB",
+		"GOOGLE_CLIENT_ID",
+		"GOOGLE_CLIENT_SECRET",
+		"GOOGLE_REDIRECT_URL",
+		"FRONTEND_URL",
+		"SESSION_TTL",
+		"COOKIE_SECURE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -32,6 +41,12 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.RedisDB != 0 {
 		t.Fatalf("expected default Redis DB 0, got %d", cfg.RedisDB)
 	}
+	if cfg.SessionTTL != 24*time.Hour {
+		t.Fatalf("expected default session TTL 24h, got %q", cfg.SessionTTL)
+	}
+	if cfg.GoogleOAuthEnabled() {
+		t.Fatal("expected Google OAuth to be disabled without credentials")
+	}
 }
 
 func TestLoadRejectsInvalidRedisDB(t *testing.T) {
@@ -39,5 +54,21 @@ func TestLoadRejectsInvalidRedisDB(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected invalid REDIS_DB to return an error")
+	}
+}
+
+func TestLoadRejectsInvalidSessionTTL(t *testing.T) {
+	t.Setenv("SESSION_TTL", "tomorrow")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid SESSION_TTL to return an error")
+	}
+}
+
+func TestGoogleOAuthEnabledRequiresBothCredentials(t *testing.T) {
+	config := Config{GoogleClientID: "client", GoogleClientSecret: "secret"}
+
+	if !config.GoogleOAuthEnabled() {
+		t.Fatal("expected Google OAuth to be enabled with both credentials")
 	}
 }
