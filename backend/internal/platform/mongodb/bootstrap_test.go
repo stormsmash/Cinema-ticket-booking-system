@@ -17,4 +17,7 @@ func TestScreeningSeedsHaveStableLayouts(t *testing.T) {
 	if seeds[0].Seats[0].ID != "A1" || seeds[0].Seats[49].ID != "E10" {
 		t.Fatalf("unexpected seat layout: first=%q last=%q", seeds[0].Seats[0].ID, seeds[0].Seats[49].ID)
 	}
+	if seeds[0].Seats[0].Status != "AVAILABLE" {
+		t.Fatalf("expected seeded seats to be available, got %q", seeds[0].Seats[0].Status)
+	}
 }

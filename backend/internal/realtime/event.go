@@ -10,6 +10,7 @@ const (
 	SeatLocked   SeatEventType = "seat.locked"
 	SeatReleased SeatEventType = "seat.released"
 	SeatExpired  SeatEventType = "seat.expired"
+	SeatBooked   SeatEventType = "seat.booked"
 )
 
 type SeatEvent struct {

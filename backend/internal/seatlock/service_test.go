@@ -129,3 +129,23 @@ func TestAcquirePreservesContentionError(t *testing.T) {
 		t.Fatalf("expected ErrAlreadyLocked, got %v", err)
 	}
 }
+
+func TestAcquireRejectsBookedSeatBeforeRedis(t *testing.T) {
+	store := &storeStub{}
+	service := NewService(
+		screeningFinderStub{screening: domain.Screening{Seats: []domain.Seat{{
+			ID:     "A1",
+			Status: domain.SeatStatusBooked,
+		}}}},
+		store,
+		time.Minute,
+	)
+
+	_, err := service.Acquire(context.Background(), bson.NewObjectID().Hex(), "A1", "user-1")
+	if !errors.Is(err, ErrAlreadyBooked) {
+		t.Fatalf("expected ErrAlreadyBooked, got %v", err)
+	}
+	if store.acquiredSeatID != "" {
+		t.Fatal("Redis store must not be called for a booked seat")
+	}
+}

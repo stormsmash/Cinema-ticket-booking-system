@@ -23,6 +23,7 @@ type Dependencies struct {
 	SeatLocks   SeatLockService
 	SeatEvents  *realtime.Hub
 	FrontendURL string
+	Bookings    BookingService
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
@@ -51,6 +52,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 		dependencies.SeatEvents,
 		dependencies.FrontendURL,
 	)
+	bookings := newBookingHandler(dependencies.Bookings)
 	api.GET("/screenings", screenings.list)
 	api.GET(
 		"/screenings/:screeningID/seats",
@@ -70,6 +72,11 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET(
 		"/screenings/:screeningID/seat-events",
 		seatEvents.stream,
+	)
+	api.POST(
+		"/bookings",
+		auth.requireAuthentication(),
+		bookings.confirm,
 	)
 
 	return router

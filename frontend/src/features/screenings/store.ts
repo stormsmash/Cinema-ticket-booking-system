@@ -3,13 +3,14 @@ import { defineStore } from 'pinia'
 
 import {
   acquireSeatLock,
+  confirmSeatBooking,
   fetchScreenings,
   fetchSeatMap,
   releaseSeatLock,
   ScreeningApiError,
 } from './api'
 import { subscribeToSeatEvents } from './realtime'
-import type { ScreeningSummary, SeatEvent, SeatLock, SeatMap } from './types'
+import type { Booking, ScreeningSummary, SeatEvent, SeatLock, SeatMap } from './types'
 
 export const useScreeningStore = defineStore('screenings', () => {
   const screenings = ref<ScreeningSummary[]>([])
@@ -22,6 +23,9 @@ export const useScreeningStore = defineStore('screenings', () => {
   const activeLock = ref<SeatLock | null>(null)
   const isUpdatingLock = ref(false)
   const lockError = ref('')
+  const confirmedBooking = ref<Booking | null>(null)
+  const isConfirmingBooking = ref(false)
+  const bookingError = ref('')
 
   let seatRequestNumber = 0
   let stopSeatEvents: (() => void) | null = null
@@ -54,6 +58,8 @@ export const useScreeningStore = defineStore('screenings', () => {
     seatMap.value = null
     activeLock.value = null
     lockError.value = ''
+    confirmedBooking.value = null
+    bookingError.value = ''
     seatsError.value = ''
 
     const loaded = await loadSeatMap(screeningID, true)
@@ -132,6 +138,8 @@ export const useScreeningStore = defineStore('screenings', () => {
 
     isUpdatingLock.value = true
     lockError.value = ''
+    confirmedBooking.value = null
+    bookingError.value = ''
 
     try {
       const lock = await acquireSeatLock(selectedScreeningID.value, seatID)
@@ -160,6 +168,7 @@ export const useScreeningStore = defineStore('screenings', () => {
 
     isUpdatingLock.value = true
     lockError.value = ''
+    bookingError.value = ''
 
     try {
       await releaseSeatLock(lock.screening_id, lock.seat_id)
@@ -178,6 +187,27 @@ export const useScreeningStore = defineStore('screenings', () => {
     lockError.value = 'Your seat hold expired. Choose an available seat to try again.'
   }
 
+  async function confirmBooking() {
+    const lock = activeLock.value
+    if (!lock || isConfirmingBooking.value || isUpdatingLock.value) return
+
+    isConfirmingBooking.value = true
+    bookingError.value = ''
+
+    try {
+      confirmedBooking.value = await confirmSeatBooking(lock.screening_id, lock.seat_id)
+      activeLock.value = null
+      await reloadSeatMap()
+    } catch (error) {
+      bookingError.value = bookingErrorMessage(error)
+      if (error instanceof ScreeningApiError && [401, 409].includes(error.status)) {
+        await reloadSeatMap()
+      }
+    } finally {
+      isConfirmingBooking.value = false
+    }
+  }
+
   return {
     screenings,
     selectedScreeningID,
@@ -189,12 +219,16 @@ export const useScreeningStore = defineStore('screenings', () => {
     activeLock,
     isUpdatingLock,
     lockError,
+    confirmedBooking,
+    isConfirmingBooking,
+    bookingError,
     loadScreenings,
     selectScreening,
     reloadSeatMap,
     lockSeat,
     unlockSeat,
     handleLockExpired,
+    confirmBooking,
     stopRealtime,
   }
 })
@@ -209,6 +243,26 @@ function lockFromSeatMap(seatMap: SeatMap): SeatLock | null {
     status: 'LOCKED',
     expires_at: seat.lock_expires_at,
   }
+}
+
+function bookingErrorMessage(error: unknown) {
+  if (error instanceof ScreeningApiError) {
+    if (error.status === 401) return 'Your session expired. Sign in again before booking.'
+    if (error.code === 'SEAT_LOCK_EXPIRED') {
+      return 'Your seat hold expired before confirmation. Choose the seat again.'
+    }
+    if (error.code === 'SEAT_LOCK_NOT_OWNED') {
+      return 'This seat is no longer held by your account.'
+    }
+    if (error.code === 'SEAT_ALREADY_BOOKED') {
+      return 'That seat has already been booked. Choose another seat.'
+    }
+    if (error.code === 'SCREENING_STARTED') {
+      return 'This screening has already started and can no longer be booked.'
+    }
+  }
+
+  return 'Unable to confirm the booking. Your seat hold is still active; please try again.'
 }
 
 function lockErrorMessage(error: unknown) {

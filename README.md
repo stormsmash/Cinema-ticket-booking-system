@@ -9,11 +9,12 @@ small, tested milestones so each part can be explained and reviewed on its own.
 - The API seeds two screenings and exposes their seat layouts.
 - The Vue page loads showtimes from the API and displays an accessible seat grid.
 - Google OAuth creates or updates a user in MongoDB and stores a 24-hour session in Redis.
-- An authenticated user can hold a seat in Redis for 10 minutes and release it early.
+- An authenticated user can hold a seat in Redis for 5 minutes and release it early.
 - The seat map shows current locks and identifies the lock owned by the signed-in user.
 - WebSocket updates keep open seat maps in sync when a hold is created, released, or expires.
+- Mock payment confirmation writes the booking and audit log in one MongoDB transaction.
 
-Booking confirmation and Kafka events are still to be implemented.
+The admin dashboard and Kafka event consumer are still to be implemented.
 
 ## Run locally
 
@@ -64,11 +65,26 @@ Do not commit `.env` or the client secret. Production deployments must use HTTPS
 | `POST` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Hold a seat for the current user |
 | `DELETE` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Release the current user's hold |
 | `GET` | `/api/v1/screenings/:screeningID/seat-events` | WebSocket stream for seat changes |
+| `POST` | `/api/v1/bookings` | Confirm the current user's held seat |
 
 The WebSocket event is only a change notification. After receiving it, the web app reloads the
-seat map so Redis remains the source of truth and lock ownership is calculated from the current
-session. Redis keyspace notifications must include string, generic, and expiry events; Docker
-Compose configures this automatically.
+seat map so MongoDB remains authoritative for booked seats and Redis remains authoritative for
+temporary holds. Redis keyspace notifications must include string, generic, and expiry events;
+Docker Compose configures this automatically.
+
+## Booking confirmation flow
+
+1. The authenticated user holds an available seat in Redis for 5 minutes.
+2. Confirmation atomically changes that lock into a short-lived claim token. A stale release
+   request cannot delete a newer claim.
+3. One MongoDB transaction changes the embedded seat from `AVAILABLE` to `BOOKED`, inserts the
+   booking, and appends a `BOOKING_SUCCESS` audit log.
+4. The unique booked-seat index and conditional seat update are the final double-booking guards.
+5. Only after MongoDB commits does the API delete the Redis claim and publish `seat.booked`.
+
+Payment is deliberately mocked because the assignment evaluates booking correctness rather than a
+real payment gateway. If the MongoDB transaction fails, the API restores the user's original hold
+for whatever time remained.
 
 ## Tests
 

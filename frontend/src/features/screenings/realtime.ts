@@ -63,11 +63,13 @@ function parseSeatEvent(value: string, screeningID: string): SeatEvent | null {
     const validType =
       event.type === 'seat.locked' ||
       event.type === 'seat.released' ||
-      event.type === 'seat.expired'
+      event.type === 'seat.expired' ||
+      event.type === 'seat.booked'
     const validStatus =
       (event.type === 'seat.locked' && event.status === 'LOCKED') ||
       ((event.type === 'seat.released' || event.type === 'seat.expired') &&
-        event.status === 'AVAILABLE')
+        event.status === 'AVAILABLE') ||
+      (event.type === 'seat.booked' && event.status === 'BOOKED')
 
     if (
       event.version !== 1 ||

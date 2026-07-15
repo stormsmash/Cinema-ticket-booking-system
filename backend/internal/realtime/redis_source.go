@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -64,6 +65,7 @@ func (source *RedisSeatEventSource) subscribe(
 	publish func(SeatEvent),
 ) error {
 	channels := []string{
+		seatEventChannel,
 		source.eventChannel("set"),
 		source.eventChannel("del"),
 		source.eventChannel("expired"),
@@ -105,6 +107,21 @@ func (source *RedisSeatEventSource) toSeatEvent(
 	channel string,
 	key string,
 ) (SeatEvent, bool, error) {
+	if channel == seatEventChannel {
+		var event SeatEvent
+		if err := json.Unmarshal([]byte(key), &event); err != nil {
+			return SeatEvent{}, false, nil
+		}
+		if event.Version != EventVersion || event.Type != SeatBooked ||
+			event.Status != "BOOKED" || event.SeatID == "" {
+			return SeatEvent{}, false, nil
+		}
+		if _, err := bson.ObjectIDFromHex(event.ScreeningID); err != nil {
+			return SeatEvent{}, false, nil
+		}
+		return event, true, nil
+	}
+
 	screeningID, seatID, ok := parseSeatLockKey(key)
 	if !ok {
 		return SeatEvent{}, false, nil

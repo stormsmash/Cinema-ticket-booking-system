@@ -45,8 +45,8 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.SessionTTL != 24*time.Hour {
 		t.Fatalf("expected default session TTL 24h, got %q", cfg.SessionTTL)
 	}
-	if cfg.SeatLockTTL != 10*time.Minute {
-		t.Fatalf("expected default seat lock TTL 10m, got %q", cfg.SeatLockTTL)
+	if cfg.SeatLockTTL != 5*time.Minute {
+		t.Fatalf("expected default seat lock TTL 5m, got %q", cfg.SeatLockTTL)
 	}
 	if cfg.GoogleOAuthEnabled() {
 		t.Fatal("expected Google OAuth to be disabled without credentials")

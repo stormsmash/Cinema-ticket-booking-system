@@ -26,9 +26,10 @@ type Auditorium struct {
 }
 
 type Seat struct {
-	ID     string `bson:"id"`
-	Row    string `bson:"row"`
-	Number int    `bson:"number"`
+	ID     string     `bson:"id"`
+	Row    string     `bson:"row"`
+	Number int        `bson:"number"`
+	Status SeatStatus `bson:"status"`
 }
 
 type Screening struct {

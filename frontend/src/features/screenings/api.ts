@@ -1,4 +1,4 @@
-import type { ScreeningSummary, SeatLock, SeatMap } from './types'
+import type { Booking, ScreeningSummary, SeatLock, SeatMap } from './types'
 
 interface ApiResponse<T> {
   data: T
@@ -27,6 +27,14 @@ export async function releaseSeatLock(screeningID: string, seatID: string): Prom
   if (!response.ok) {
     throw await apiError(response)
   }
+}
+
+export async function confirmSeatBooking(screeningID: string, seatID: string): Promise<Booking> {
+  return request<Booking>('/api/v1/bookings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ screening_id: screeningID, seat_id: seatID }),
+  })
 }
 
 export class ScreeningApiError extends Error {

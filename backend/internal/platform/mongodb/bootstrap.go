@@ -17,6 +17,7 @@ const (
 	CollectionScreenings = "screenings"
 	CollectionBookings   = "bookings"
 	CollectionUsers      = "users"
+	CollectionAuditLogs  = "audit_logs"
 )
 
 func Bootstrap(ctx context.Context, database *mongo.Database) error {
@@ -25,6 +26,9 @@ func Bootstrap(ctx context.Context, database *mongo.Database) error {
 	}
 
 	if err := seedScreenings(ctx, database.Collection(CollectionScreenings), time.Now().UTC()); err != nil {
+		return err
+	}
+	if err := backfillSeatStatuses(ctx, database.Collection(CollectionScreenings)); err != nil {
 		return err
 	}
 
@@ -97,6 +101,43 @@ func createIndexes(ctx context.Context, database *mongo.Database) error {
 	})
 	if err != nil {
 		return fmt.Errorf("create booking indexes: %w", err)
+	}
+
+	_, err = database.Collection(CollectionAuditLogs).Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			Keys: bson.D{{Key: "created_at", Value: -1}},
+			Options: options.Index().
+				SetName("audit_created_at"),
+		},
+		{
+			Keys: bson.D{
+				{Key: "event", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().
+				SetName("audit_event_created_at"),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("create audit log indexes: %w", err)
+	}
+
+	return nil
+}
+
+func backfillSeatStatuses(ctx context.Context, collection *mongo.Collection) error {
+	filter := bson.D{{Key: "seats", Value: bson.D{{Key: "$elemMatch", Value: bson.D{
+		{Key: "status", Value: bson.D{{Key: "$exists", Value: false}}},
+	}}}}}
+	update := bson.D{{Key: "$set", Value: bson.D{
+		{Key: "seats.$[seat].status", Value: domain.SeatStatusAvailable},
+	}}}
+	updateOptions := options.UpdateMany().SetArrayFilters([]any{
+		bson.D{{Key: "seat.status", Value: bson.D{{Key: "$exists", Value: false}}}},
+	})
+
+	if _, err := collection.UpdateMany(ctx, filter, update, updateOptions); err != nil {
+		return fmt.Errorf("backfill screening seat statuses: %w", err)
 	}
 
 	return nil
@@ -173,6 +214,7 @@ func buildSeats(rows []string, seatsPerRow int) []domain.Seat {
 				ID:     row + strconv.Itoa(number),
 				Row:    row,
 				Number: number,
+				Status: domain.SeatStatusAvailable,
 			})
 		}
 	}

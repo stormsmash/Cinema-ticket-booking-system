@@ -24,6 +24,9 @@ const {
   activeLock,
   isUpdatingLock,
   lockError,
+  confirmedBooking,
+  isConfirmingBooking,
+  bookingError,
 } = storeToRefs(store)
 
 onMounted(store.loadScreenings)
@@ -37,7 +40,7 @@ onBeforeUnmount(store.stopRealtime)
         <p class="eyebrow">Cinema Ticket Booking</p>
         <h1>Pick a showtime and a seat.</h1>
         <p class="summary">
-          Choose an available seat and Redis will hold it for 10 minutes while you finish the
+          Choose an available seat and Redis will hold it for 5 minutes while you finish the
           booking.
         </p>
       </div>
@@ -117,8 +120,12 @@ onBeforeUnmount(store.stopRealtime)
             :signed-in="Boolean(user)"
             :is-updating="isUpdatingLock"
             :error="lockError"
+            :booking="confirmedBooking"
+            :is-confirming="isConfirmingBooking"
+            :booking-error="bookingError"
             @release="store.unlockSeat"
             @expired="store.handleLockExpired"
+            @confirm="store.confirmBooking"
           />
         </template>
 

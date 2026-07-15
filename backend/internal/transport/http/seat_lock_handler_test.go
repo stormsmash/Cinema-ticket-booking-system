@@ -184,3 +184,36 @@ func TestSeatMapMarksCurrentUsersLock(t *testing.T) {
 		t.Fatalf("unexpected response: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestSeatMapKeepsBookedStatusAheadOfStaleLock(t *testing.T) {
+	screeningID := bson.NewObjectID()
+	locks := &seatLockServiceStub{currentLocks: map[string]seatlock.Lock{
+		"A1": {ScreeningID: screeningID.Hex(), SeatID: "A1", UserID: "user-1"},
+	}}
+	screenings := screeningServiceStub{findByID: func(context.Context, bson.ObjectID) (domain.Screening, error) {
+		return domain.Screening{
+			ID: screeningID,
+			Seats: []domain.Seat{{
+				ID:     "A1",
+				Row:    "A",
+				Number: 1,
+				Status: domain.SeatStatusBooked,
+			}},
+		}, nil
+	}}
+	router := seatLockTestRouter(domain.User{}, locks, screenings)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/screenings/"+screeningID.Hex()+"/seats",
+		nil,
+	)
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK ||
+		!strings.Contains(recorder.Body.String(), `"status":"BOOKED"`) ||
+		strings.Contains(recorder.Body.String(), `"locked_by_me":true`) {
+		t.Fatalf("unexpected response: status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}

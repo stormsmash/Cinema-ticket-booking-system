@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import ScreeningPicker from '@/features/screenings/components/ScreeningPicker.vue'
 import SeatGrid from '@/features/screenings/components/SeatGrid.vue'
 import SeatLockStatus from '@/features/screenings/components/SeatLockStatus.vue'
-import type { ScreeningSummary, SeatLock, SeatMap } from '@/features/screenings/types'
+import type { Booking, ScreeningSummary, SeatLock, SeatMap } from '@/features/screenings/types'
 
 const screening: ScreeningSummary = {
   id: 'screening-1',
@@ -63,13 +63,74 @@ describe('SeatLockStatus', () => {
       expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     }
     const wrapper = mount(SeatLockStatus, {
-      props: { lock, signedIn: true, isUpdating: false, error: '' },
+      props: {
+        lock,
+        signedIn: true,
+        isUpdating: false,
+        error: '',
+        booking: null,
+        isConfirming: false,
+        bookingError: '',
+      },
     })
 
     expect(wrapper.text()).toContain('Seat A1 held for')
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('.lock-actions button:last-child').trigger('click')
     expect(wrapper.emitted('release')).toHaveLength(1)
 
+    wrapper.unmount()
+  })
+
+  it('asks for confirmation before emitting a booking request', async () => {
+    const lock: SeatLock = {
+      screening_id: screening.id,
+      seat_id: 'A1',
+      status: 'LOCKED',
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    }
+    const wrapper = mount(SeatLockStatus, {
+      props: {
+        lock,
+        signedIn: true,
+        isUpdating: false,
+        error: '',
+        booking: null,
+        isConfirming: false,
+        bookingError: '',
+      },
+    })
+
+    await wrapper.get('.lock-actions .confirm-button').trigger('click')
+
+    expect(wrapper.get('dialog').attributes('open')).toBeDefined()
+    await wrapper.get('.dialog-actions .confirm-button').trigger('click')
+    expect(wrapper.emitted('confirm')).toHaveLength(1)
+
+    wrapper.unmount()
+  })
+
+  it('shows the confirmed booking reference', () => {
+    const booking: Booking = {
+      id: 'booking-123',
+      screening_id: screening.id,
+      seat_id: 'A1',
+      status: 'BOOKED',
+      created_at: '2026-07-15T12:00:00Z',
+    }
+    const wrapper = mount(SeatLockStatus, {
+      props: {
+        lock: null,
+        signedIn: true,
+        isUpdating: false,
+        error: '',
+        booking,
+        isConfirming: false,
+        bookingError: '',
+      },
+    })
+
+    expect(wrapper.text()).toContain('Seat A1 is booked')
+    expect(wrapper.text()).toContain('booking-123')
     wrapper.unmount()
   })
 })

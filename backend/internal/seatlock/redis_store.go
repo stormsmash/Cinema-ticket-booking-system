@@ -2,8 +2,11 @@ package seatlock
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	redisclient "github.com/redis/go-redis/v9"
@@ -21,6 +24,51 @@ if owner ~= ARGV[1] then
 end
 return redis.call("DEL", KEYS[1])
 `)
+
+var claimScript = redisclient.NewScript(`
+local owner = redis.call("GET", KEYS[1])
+if not owner then
+  return {0, 0}
+end
+if owner ~= ARGV[1] then
+  return {-1, 0}
+end
+local remaining = redis.call("PTTL", KEYS[1])
+if remaining <= 0 then
+  return {0, 0}
+end
+redis.call("SET", KEYS[1], ARGV[2], "PX", ARGV[3], "XX")
+return {1, remaining}
+`)
+
+var restoreClaimScript = redisclient.NewScript(`
+local owner = redis.call("GET", KEYS[1])
+if owner ~= ARGV[1] then
+  return 0
+end
+local remaining = tonumber(ARGV[3])
+if remaining <= 0 then
+  return redis.call("DEL", KEYS[1])
+end
+redis.call("SET", KEYS[1], ARGV[2], "PX", remaining, "XX")
+return 1
+`)
+
+var commitClaimScript = redisclient.NewScript(`
+local owner = redis.call("GET", KEYS[1])
+if owner ~= ARGV[1] then
+  return 0
+end
+return redis.call("DEL", KEYS[1])
+`)
+
+type Claim struct {
+	ScreeningID       string
+	SeatID            string
+	UserID            string
+	Token             string
+	OriginalExpiresAt time.Time
+}
 
 type RedisStore struct {
 	client *redisclient.Client
@@ -128,12 +176,84 @@ func (store *RedisStore) Current(
 		locks[seatID] = Lock{
 			ScreeningID: screeningID,
 			SeatID:      seatID,
-			UserID:      owner,
+			UserID:      lockOwner(owner),
 			ExpiresAt:   now.Add(remaining),
 		}
 	}
 
 	return locks, nil
+}
+
+func (store *RedisStore) Claim(
+	ctx context.Context,
+	screeningID string,
+	seatID string,
+	userID string,
+	claimTTL time.Duration,
+) (Claim, error) {
+	token, err := randomClaimToken()
+	if err != nil {
+		return Claim{}, err
+	}
+
+	claimValue := seatLockClaimValue(userID, token)
+	result, err := claimScript.Run(
+		ctx,
+		store.client,
+		[]string{seatLockKey(screeningID, seatID)},
+		userID,
+		claimValue,
+		claimTTL.Milliseconds(),
+	).Int64Slice()
+	if err != nil {
+		return Claim{}, fmt.Errorf("claim seat lock: %w", err)
+	}
+	if len(result) != 2 {
+		return Claim{}, fmt.Errorf("claim seat lock: unexpected Redis response")
+	}
+	if result[0] == 0 {
+		return Claim{}, ErrLockNotFound
+	}
+	if result[0] == -1 {
+		return Claim{}, ErrLockNotOwned
+	}
+
+	return Claim{
+		ScreeningID:       screeningID,
+		SeatID:            seatID,
+		UserID:            userID,
+		Token:             token,
+		OriginalExpiresAt: time.Now().UTC().Add(time.Duration(result[1]) * time.Millisecond),
+	}, nil
+}
+
+func (store *RedisStore) RestoreClaim(ctx context.Context, claim Claim) error {
+	remaining := time.Until(claim.OriginalExpiresAt)
+	if _, err := restoreClaimScript.Run(
+		ctx,
+		store.client,
+		[]string{seatLockKey(claim.ScreeningID, claim.SeatID)},
+		seatLockClaimValue(claim.UserID, claim.Token),
+		claim.UserID,
+		remaining.Milliseconds(),
+	).Result(); err != nil {
+		return fmt.Errorf("restore seat lock claim: %w", err)
+	}
+
+	return nil
+}
+
+func (store *RedisStore) CommitClaim(ctx context.Context, claim Claim) error {
+	if _, err := commitClaimScript.Run(
+		ctx,
+		store.client,
+		[]string{seatLockKey(claim.ScreeningID, claim.SeatID)},
+		seatLockClaimValue(claim.UserID, claim.Token),
+	).Result(); err != nil {
+		return fmt.Errorf("commit seat lock claim: %w", err)
+	}
+
+	return nil
 }
 
 func (store *RedisStore) Release(
@@ -160,4 +280,30 @@ func (store *RedisStore) Release(
 
 func seatLockKey(screeningID, seatID string) string {
 	return seatLockKeyPrefix + screeningID + ":" + seatID
+}
+
+func seatLockClaimValue(userID, token string) string {
+	return "booking_claim:" + userID + ":" + token
+}
+
+func lockOwner(value string) string {
+	if !strings.HasPrefix(value, "booking_claim:") {
+		return value
+	}
+
+	value = strings.TrimPrefix(value, "booking_claim:")
+	owner, _, found := strings.Cut(value, ":")
+	if !found {
+		return ""
+	}
+	return owner
+}
+
+func randomClaimToken() (string, error) {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate claim token: %w", err)
+	}
+
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }

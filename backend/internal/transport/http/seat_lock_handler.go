@@ -83,6 +83,8 @@ func (handler *seatLockHandler) writeServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusNotFound, "SEAT_NOT_FOUND", "Seat was not found")
 	case errors.Is(err, seatlock.ErrAlreadyLocked):
 		writeError(c, http.StatusConflict, "SEAT_ALREADY_LOCKED", "Seat is locked by another user")
+	case errors.Is(err, seatlock.ErrAlreadyBooked):
+		writeError(c, http.StatusConflict, "SEAT_ALREADY_BOOKED", "Seat is already booked")
 	case errors.Is(err, seatlock.ErrLockNotOwned):
 		writeError(c, http.StatusConflict, "SEAT_LOCK_NOT_OWNED", "Seat is locked by another user")
 	default:

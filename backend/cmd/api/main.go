@@ -16,6 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 
 	authservice "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/auth"
+	bookingservice "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/booking"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/config"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/health"
 	mongostore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/mongodb"
@@ -94,6 +95,19 @@ func run() error {
 		seatLockStore,
 		cfg.SeatLockTTL,
 	)
+	seatEventPublisher := realtime.NewRedisPublisher(redisClient)
+	bookingRepository := bookingservice.NewMongoRepository(
+		mongoClient,
+		database.Collection(mongostore.CollectionScreenings),
+		database.Collection(mongostore.CollectionBookings),
+		database.Collection(mongostore.CollectionAuditLogs),
+	)
+	bookingService := bookingservice.NewService(
+		bookingRepository,
+		screeningService,
+		seatLockStore,
+		seatEventPublisher,
+	)
 	eventHub := realtime.NewHub(200)
 	eventSource := realtime.NewRedisSeatEventSource(redisClient, cfg.RedisDB)
 	realtimeContext, stopRealtime := context.WithCancel(context.Background())
@@ -125,6 +139,7 @@ func run() error {
 			SeatLocks:   seatLockService,
 			SeatEvents:  eventHub,
 			FrontendURL: cfg.FrontendURL,
+			Bookings:    bookingService,
 			AuthConfig: httptransport.AuthHandlerConfig{
 				FrontendURL:  cfg.FrontendURL,
 				SessionTTL:   cfg.SessionTTL,

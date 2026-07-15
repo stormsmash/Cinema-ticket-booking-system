@@ -42,12 +42,20 @@ export interface SeatLock {
   expires_at: string
 }
 
-export interface SeatEvent {
-  version: 1
-  type: 'seat.locked' | 'seat.released' | 'seat.expired'
+export interface Booking {
+  id: string
   screening_id: string
   seat_id: string
-  status: 'LOCKED' | 'AVAILABLE'
+  status: 'BOOKED'
+  created_at: string
+}
+
+export interface SeatEvent {
+  version: 1
+  type: 'seat.locked' | 'seat.released' | 'seat.expired' | 'seat.booked'
+  screening_id: string
+  seat_id: string
+  status: 'LOCKED' | 'AVAILABLE' | 'BOOKED'
   expires_at?: string
   occurred_at: string
 }

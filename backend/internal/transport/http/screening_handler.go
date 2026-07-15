@@ -111,13 +111,17 @@ func (handler *screeningHandler) seats(c *gin.Context) {
 
 	seats := make([]seatResponse, 0, len(item.Seats))
 	for _, seat := range item.Seats {
+		status := seat.Status
+		if status == "" {
+			status = domain.SeatStatusAvailable
+		}
 		response := seatResponse{
 			ID:     seat.ID,
 			Row:    seat.Row,
 			Number: seat.Number,
-			Status: domain.SeatStatusAvailable,
+			Status: status,
 		}
-		if lock, exists := locks[seat.ID]; exists {
+		if lock, exists := locks[seat.ID]; exists && status == domain.SeatStatusAvailable {
 			expiresAt := lock.ExpiresAt
 			response.Status = domain.SeatStatusLocked
 			response.LockedByMe = lock.UserID == currentUserID

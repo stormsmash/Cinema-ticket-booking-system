@@ -18,6 +18,8 @@ var (
 	ErrScreeningNotFound  = errors.New("screening not found")
 	ErrSeatNotFound       = errors.New("seat not found")
 	ErrAlreadyLocked      = errors.New("seat is already locked")
+	ErrAlreadyBooked      = errors.New("seat is already booked")
+	ErrLockNotFound       = errors.New("seat lock was not found")
 	ErrLockNotOwned       = errors.New("seat lock belongs to another user")
 )
 
@@ -124,6 +126,9 @@ func (service *Service) validateSeat(
 	seatID = strings.ToUpper(strings.TrimSpace(seatID))
 	for _, seat := range item.Seats {
 		if seat.ID == seatID {
+			if seat.Status == domain.SeatStatusBooked {
+				return "", ErrAlreadyBooked
+			}
 			return seatID, nil
 		}
 	}

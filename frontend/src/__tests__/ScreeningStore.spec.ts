@@ -1,13 +1,20 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchSeatMap } from '@/features/screenings/api'
+import { confirmSeatBooking, fetchSeatMap } from '@/features/screenings/api'
 import { subscribeToSeatEvents } from '@/features/screenings/realtime'
 import { useScreeningStore } from '@/features/screenings/store'
-import type { ScreeningSummary, SeatEvent, SeatLock, SeatMap } from '@/features/screenings/types'
+import type {
+  Booking,
+  ScreeningSummary,
+  SeatEvent,
+  SeatLock,
+  SeatMap,
+} from '@/features/screenings/types'
 
 vi.mock('@/features/screenings/api', () => ({
   acquireSeatLock: vi.fn<(screeningID: string, seatID: string) => Promise<SeatLock>>(),
+  confirmSeatBooking: vi.fn<(screeningID: string, seatID: string) => Promise<Booking>>(),
   fetchScreenings: vi.fn<() => Promise<ScreeningSummary[]>>(),
   fetchSeatMap: vi.fn<(screeningID: string) => Promise<SeatMap>>(),
   releaseSeatLock: vi.fn<(screeningID: string, seatID: string) => Promise<void>>(),
@@ -86,5 +93,46 @@ describe('screening store realtime updates', () => {
 
     store.stopRealtime()
     expect(stop).toHaveBeenCalledOnce()
+  })
+
+  it('confirms the active hold and reloads it as booked', async () => {
+    vi.mocked(subscribeToSeatEvents).mockReturnValue(vi.fn<() => void>())
+    const lockedMap: SeatMap = {
+      ...structuredClone(availableMap),
+      seats: [
+        {
+          id: 'A1',
+          row: 'A',
+          number: 1,
+          status: 'LOCKED',
+          locked_by_me: true,
+          lock_expires_at: '2026-07-15T12:05:00Z',
+        },
+      ],
+    }
+    const bookedMap: SeatMap = {
+      ...structuredClone(availableMap),
+      seats: [{ id: 'A1', row: 'A', number: 1, status: 'BOOKED', locked_by_me: false }],
+    }
+    const booking: Booking = {
+      id: 'booking-123',
+      screening_id: 'screening-1',
+      seat_id: 'A1',
+      status: 'BOOKED',
+      created_at: '2026-07-15T12:00:00Z',
+    }
+    vi.mocked(fetchSeatMap)
+      .mockResolvedValueOnce(structuredClone(lockedMap))
+      .mockResolvedValueOnce(structuredClone(bookedMap))
+    vi.mocked(confirmSeatBooking).mockResolvedValue(booking)
+
+    const store = useScreeningStore()
+    await store.selectScreening('screening-1')
+    await store.confirmBooking()
+
+    expect(confirmSeatBooking).toHaveBeenCalledWith('screening-1', 'A1')
+    expect(store.confirmedBooking?.id).toBe('booking-123')
+    expect(store.activeLock).toBeNull()
+    expect(store.seatMap?.seats[0]?.status).toBe('BOOKED')
   })
 })

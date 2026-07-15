@@ -1,6 +1,13 @@
 package realtime
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+)
 
 func TestParseSeatLockKey(t *testing.T) {
 	screeningID := "66a000000000000000000001"
@@ -27,5 +34,29 @@ func TestParseSeatLockKey(t *testing.T) {
 				t.Fatalf("unexpected parsed key: screening=%q seat=%q", actualScreeningID, seatID)
 			}
 		})
+	}
+}
+
+func TestRedisSourceAcceptsBookedChannelEvent(t *testing.T) {
+	source := &RedisSeatEventSource{}
+	want := SeatEvent{
+		Version:     EventVersion,
+		Type:        SeatBooked,
+		ScreeningID: bson.NewObjectID().Hex(),
+		SeatID:      "D8",
+		Status:      "BOOKED",
+		OccurredAt:  time.Now().UTC(),
+	}
+	payload, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+
+	got, ok, err := source.toSeatEvent(context.Background(), seatEventChannel, string(payload))
+	if err != nil {
+		t.Fatalf("parse event: %v", err)
+	}
+	if !ok || got.Type != SeatBooked || got.SeatID != want.SeatID {
+		t.Fatalf("unexpected event: %#v", got)
 	}
 }

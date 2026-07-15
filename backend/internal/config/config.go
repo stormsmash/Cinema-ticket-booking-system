@@ -17,7 +17,7 @@ const (
 	defaultGoogleRedirectURL = "http://localhost:3000/api/v1/auth/google/callback"
 	defaultFrontendURL       = "http://localhost:3000"
 	defaultSessionTTL        = "24h"
-	defaultSeatLockTTL       = "10m"
+	defaultSeatLockTTL       = "5m"
 	defaultCookieSecure      = "false"
 )
 
