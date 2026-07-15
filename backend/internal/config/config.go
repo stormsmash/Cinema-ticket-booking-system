@@ -17,6 +17,7 @@ const (
 	defaultGoogleRedirectURL = "http://localhost:3000/api/v1/auth/google/callback"
 	defaultFrontendURL       = "http://localhost:3000"
 	defaultSessionTTL        = "24h"
+	defaultSeatLockTTL       = "10m"
 	defaultCookieSecure      = "false"
 )
 
@@ -33,6 +34,7 @@ type Config struct {
 	GoogleRedirectURL  string
 	FrontendURL        string
 	SessionTTL         time.Duration
+	SeatLockTTL        time.Duration
 	CookieSecure       bool
 }
 
@@ -45,6 +47,11 @@ func Load() (Config, error) {
 	sessionTTL, err := time.ParseDuration(valueOrDefault("SESSION_TTL", defaultSessionTTL))
 	if err != nil || sessionTTL <= 0 {
 		return Config{}, fmt.Errorf("SESSION_TTL must be a positive duration")
+	}
+
+	seatLockTTL, err := time.ParseDuration(valueOrDefault("SEAT_LOCK_TTL", defaultSeatLockTTL))
+	if err != nil || seatLockTTL <= 0 {
+		return Config{}, fmt.Errorf("SEAT_LOCK_TTL must be a positive duration")
 	}
 
 	cookieSecure, err := strconv.ParseBool(valueOrDefault("COOKIE_SECURE", defaultCookieSecure))
@@ -65,6 +72,7 @@ func Load() (Config, error) {
 		GoogleRedirectURL:  valueOrDefault("GOOGLE_REDIRECT_URL", defaultGoogleRedirectURL),
 		FrontendURL:        valueOrDefault("FRONTEND_URL", defaultFrontendURL),
 		SessionTTL:         sessionTTL,
+		SeatLockTTL:        seatLockTTL,
 		CookieSecure:       cookieSecure,
 	}, nil
 }

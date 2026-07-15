@@ -19,6 +19,7 @@ func TestLoadUsesDefaults(t *testing.T) {
 		"GOOGLE_REDIRECT_URL",
 		"FRONTEND_URL",
 		"SESSION_TTL",
+		"SEAT_LOCK_TTL",
 		"COOKIE_SECURE",
 	} {
 		t.Setenv(key, "")
@@ -44,6 +45,9 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.SessionTTL != 24*time.Hour {
 		t.Fatalf("expected default session TTL 24h, got %q", cfg.SessionTTL)
 	}
+	if cfg.SeatLockTTL != 10*time.Minute {
+		t.Fatalf("expected default seat lock TTL 10m, got %q", cfg.SeatLockTTL)
+	}
 	if cfg.GoogleOAuthEnabled() {
 		t.Fatal("expected Google OAuth to be disabled without credentials")
 	}
@@ -62,6 +66,14 @@ func TestLoadRejectsInvalidSessionTTL(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected invalid SESSION_TTL to return an error")
+	}
+}
+
+func TestLoadRejectsInvalidSeatLockTTL(t *testing.T) {
+	t.Setenv("SEAT_LOCK_TTL", "0s")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid SEAT_LOCK_TTL to return an error")
 	}
 }
 

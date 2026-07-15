@@ -4,7 +4,8 @@ import { mount } from '@vue/test-utils'
 
 import ScreeningPicker from '@/features/screenings/components/ScreeningPicker.vue'
 import SeatGrid from '@/features/screenings/components/SeatGrid.vue'
-import type { ScreeningSummary, SeatMap } from '@/features/screenings/types'
+import SeatLockStatus from '@/features/screenings/components/SeatLockStatus.vue'
+import type { ScreeningSummary, SeatLock, SeatMap } from '@/features/screenings/types'
 
 const screening: ScreeningSummary = {
   id: 'screening-1',
@@ -19,8 +20,8 @@ const seatMap: SeatMap = {
   auditorium: screening.auditorium,
   starts_at: screening.starts_at,
   seats: [
-    { id: 'A1', row: 'A', number: 1, status: 'AVAILABLE' },
-    { id: 'A2', row: 'A', number: 2, status: 'BOOKED' },
+    { id: 'A1', row: 'A', number: 1, status: 'AVAILABLE', locked_by_me: false },
+    { id: 'A2', row: 'A', number: 2, status: 'BOOKED', locked_by_me: false },
   ],
 }
 
@@ -37,8 +38,10 @@ describe('ScreeningPicker', () => {
 })
 
 describe('SeatGrid', () => {
-  it('allows an available seat to be selected and disables a booked seat', async () => {
-    const wrapper = mount(SeatGrid, { props: { seatMap } })
+  it('requests a lock for an available seat and disables a booked seat', async () => {
+    const wrapper = mount(SeatGrid, {
+      props: { seatMap, canLock: true, isUpdatingLock: false },
+    })
     const availableSeat = wrapper.get('button[aria-label="Seat A1, available"]')
     const bookedSeat = wrapper.get('button[aria-label="Seat A2, booked"]')
 
@@ -46,7 +49,27 @@ describe('SeatGrid', () => {
 
     await availableSeat.trigger('click')
 
-    expect(wrapper.text()).toContain('Seat A1 selected')
-    expect(availableSeat.attributes('aria-pressed')).toBe('true')
+    expect(wrapper.emitted('lock')).toEqual([['A1']])
+    expect(availableSeat.attributes('aria-pressed')).toBe('false')
+  })
+})
+
+describe('SeatLockStatus', () => {
+  it('shows the held seat and lets its owner release it', async () => {
+    const lock: SeatLock = {
+      screening_id: screening.id,
+      seat_id: 'A1',
+      status: 'LOCKED',
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    }
+    const wrapper = mount(SeatLockStatus, {
+      props: { lock, signedIn: true, isUpdating: false, error: '' },
+    })
+
+    expect(wrapper.text()).toContain('Seat A1 held for')
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('release')).toHaveLength(1)
+
+    wrapper.unmount()
   })
 })

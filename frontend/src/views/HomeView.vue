@@ -3,12 +3,16 @@ import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import AuthStatus from '@/features/auth/components/AuthStatus.vue'
+import { useAuthStore } from '@/features/auth/store'
 import ScreeningPicker from '@/features/screenings/components/ScreeningPicker.vue'
 import SeatGrid from '@/features/screenings/components/SeatGrid.vue'
+import SeatLockStatus from '@/features/screenings/components/SeatLockStatus.vue'
 import { useScreeningStore } from '@/features/screenings/store'
 import SystemStatus from '@/features/system/components/SystemStatus.vue'
 
 const store = useScreeningStore()
+const authStore = useAuthStore()
+const { user } = storeToRefs(authStore)
 const {
   screenings,
   selectedScreeningID,
@@ -17,6 +21,9 @@ const {
   seatsError,
   isLoadingScreenings,
   isLoadingSeats,
+  activeLock,
+  isUpdatingLock,
+  lockError,
 } = storeToRefs(store)
 
 onMounted(store.loadScreenings)
@@ -29,8 +36,8 @@ onMounted(store.loadScreenings)
         <p class="eyebrow">Cinema Ticket Booking</p>
         <h1>Pick a showtime and a seat.</h1>
         <p class="summary">
-          Live seat locking is the next milestone. For now, this screen reads showtimes and seat
-          layouts from the Go API.
+          Choose an available seat and Redis will hold it for 10 minutes while you finish the
+          booking.
         </p>
       </div>
 
@@ -96,7 +103,23 @@ onMounted(store.loadScreenings)
           <button type="button" @click="store.reloadSeatMap">Try again</button>
         </div>
 
-        <SeatGrid v-else-if="seatMap" :seat-map="seatMap" />
+        <template v-else-if="seatMap">
+          <SeatGrid
+            :seat-map="seatMap"
+            :can-lock="Boolean(user)"
+            :active-seat-id="activeLock?.seat_id"
+            :is-updating-lock="isUpdatingLock"
+            @lock="store.lockSeat"
+          />
+          <SeatLockStatus
+            :lock="activeLock"
+            :signed-in="Boolean(user)"
+            :is-updating="isUpdatingLock"
+            :error="lockError"
+            @release="store.unlockSeat"
+            @expired="store.handleLockExpired"
+          />
+        </template>
 
         <p v-else class="empty-state">Choose a screening to see its available seats.</p>
       </section>

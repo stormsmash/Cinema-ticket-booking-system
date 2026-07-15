@@ -147,6 +147,46 @@ func (handler *authHandler) requireAuthentication() gin.HandlerFunc {
 	}
 }
 
+func (handler *authHandler) optionalAuthentication() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sessionToken, err := c.Cookie(sessionCookieName)
+		if err != nil {
+			c.Next()
+			return
+		}
+
+		user, err := handler.service.CurrentUser(c.Request.Context(), sessionToken)
+		if errors.Is(err, auth.ErrNotAuthenticated) {
+			handler.clearCookie(c, sessionCookieName, "/")
+			c.Next()
+			return
+		}
+		if err != nil {
+			log.Printf("load optional current user: %v", err)
+			writeError(c, http.StatusInternalServerError, "AUTH_CHECK_FAILED", "Unable to check session")
+			c.Abort()
+			return
+		}
+
+		c.Set(authUserContextKey, user)
+		c.Next()
+	}
+}
+
+func authenticatedUser(c *gin.Context) domain.User {
+	return c.MustGet(authUserContextKey).(domain.User)
+}
+
+func optionalUser(c *gin.Context) (domain.User, bool) {
+	value, exists := c.Get(authUserContextKey)
+	if !exists {
+		return domain.User{}, false
+	}
+
+	user, ok := value.(domain.User)
+	return user, ok
+}
+
 func (handler *authHandler) logout(c *gin.Context) {
 	sessionToken, _ := c.Cookie(sessionCookieName)
 	if err := handler.service.Logout(c.Request.Context(), sessionToken); err != nil {

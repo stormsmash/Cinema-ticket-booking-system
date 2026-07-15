@@ -21,6 +21,7 @@ import (
 	mongostore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/mongodb"
 	redisstore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/redis"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/screening"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/seatlock"
 	httptransport "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/transport/http"
 )
 
@@ -86,6 +87,12 @@ func run() error {
 		cfg.SessionTTL,
 		cfg.GoogleOAuthEnabled(),
 	)
+	seatLockStore := seatlock.NewRedisStore(redisClient)
+	seatLockService := seatlock.NewService(
+		screeningService,
+		seatLockStore,
+		cfg.SeatLockTTL,
+	)
 
 	readiness := health.NewService(map[string]health.CheckFunc{
 		"mongodb": func(ctx context.Context) error {
@@ -104,6 +111,7 @@ func run() error {
 			Readiness:  readiness,
 			Screenings: screeningService,
 			Auth:       authService,
+			SeatLocks:  seatLockService,
 			AuthConfig: httptransport.AuthHandlerConfig{
 				FrontendURL:  cfg.FrontendURL,
 				SessionTTL:   cfg.SessionTTL,

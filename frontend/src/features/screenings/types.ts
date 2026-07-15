@@ -23,6 +23,8 @@ export interface Seat {
   row: string
   number: number
   status: SeatStatus
+  locked_by_me: boolean
+  lock_expires_at?: string
 }
 
 export interface SeatMap {
@@ -31,4 +33,11 @@ export interface SeatMap {
   auditorium: Auditorium
   starts_at: string
   seats: Seat[]
+}
+
+export interface SeatLock {
+  screening_id: string
+  seat_id: string
+  status: 'LOCKED'
+  expires_at: string
 }

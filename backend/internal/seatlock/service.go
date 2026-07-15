@@ -1,0 +1,132 @@
+package seatlock
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/domain"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/screening"
+)
+
+var (
+	ErrInvalidScreeningID = errors.New("invalid screening ID")
+	ErrScreeningNotFound  = errors.New("screening not found")
+	ErrSeatNotFound       = errors.New("seat not found")
+	ErrAlreadyLocked      = errors.New("seat is already locked")
+	ErrLockNotOwned       = errors.New("seat lock belongs to another user")
+)
+
+type Lock struct {
+	ScreeningID string
+	SeatID      string
+	UserID      string
+	ExpiresAt   time.Time
+}
+
+type ScreeningFinder interface {
+	FindByID(context.Context, bson.ObjectID) (domain.Screening, error)
+}
+
+type Store interface {
+	Acquire(context.Context, string, string, string, time.Duration) (Lock, error)
+	Current(context.Context, string, []string) (map[string]Lock, error)
+	Release(context.Context, string, string, string) error
+}
+
+type Service struct {
+	screenings ScreeningFinder
+	store      Store
+	ttl        time.Duration
+}
+
+func NewService(screenings ScreeningFinder, store Store, ttl time.Duration) *Service {
+	return &Service{screenings: screenings, store: store, ttl: ttl}
+}
+
+func (service *Service) Acquire(
+	ctx context.Context,
+	screeningID string,
+	seatID string,
+	userID string,
+) (Lock, error) {
+	seatID, err := service.validateSeat(ctx, screeningID, seatID)
+	if err != nil {
+		return Lock{}, err
+	}
+
+	lock, err := service.store.Acquire(ctx, screeningID, seatID, userID, service.ttl)
+	if err != nil {
+		return Lock{}, fmt.Errorf("acquire seat lock: %w", err)
+	}
+
+	return lock, nil
+}
+
+func (service *Service) CurrentLocks(
+	ctx context.Context,
+	screeningID string,
+	seats []domain.Seat,
+) (map[string]Lock, error) {
+	seatIDs := make([]string, 0, len(seats))
+	for _, seat := range seats {
+		seatIDs = append(seatIDs, seat.ID)
+	}
+
+	locks, err := service.store.Current(ctx, screeningID, seatIDs)
+	if err != nil {
+		return nil, fmt.Errorf("load current seat locks: %w", err)
+	}
+
+	return locks, nil
+}
+
+func (service *Service) Release(
+	ctx context.Context,
+	screeningID string,
+	seatID string,
+	userID string,
+) error {
+	seatID, err := service.validateSeat(ctx, screeningID, seatID)
+	if err != nil {
+		return err
+	}
+
+	if err := service.store.Release(ctx, screeningID, seatID, userID); err != nil {
+		return fmt.Errorf("release seat lock: %w", err)
+	}
+
+	return nil
+}
+
+func (service *Service) validateSeat(
+	ctx context.Context,
+	screeningID string,
+	seatID string,
+) (string, error) {
+	id, err := bson.ObjectIDFromHex(screeningID)
+	if err != nil {
+		return "", ErrInvalidScreeningID
+	}
+
+	item, err := service.screenings.FindByID(ctx, id)
+	if errors.Is(err, screening.ErrNotFound) {
+		return "", ErrScreeningNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("find screening: %w", err)
+	}
+
+	seatID = strings.ToUpper(strings.TrimSpace(seatID))
+	for _, seat := range item.Seats {
+		if seat.ID == seatID {
+			return seatID, nil
+		}
+	}
+
+	return "", ErrSeatNotFound
+}

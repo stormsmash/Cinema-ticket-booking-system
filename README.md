@@ -9,10 +9,10 @@ small, tested milestones so each part can be explained and reviewed on its own.
 - The API seeds two screenings and exposes their seat layouts.
 - The Vue page loads showtimes from the API and displays an accessible seat grid.
 - Google OAuth creates or updates a user in MongoDB and stores a 24-hour session in Redis.
-- Selecting a seat is currently a frontend preview only.
+- An authenticated user can hold a seat in Redis for 10 minutes and release it early.
+- The seat map shows current locks and identifies the lock owned by the signed-in user.
 
-Redis seat locking, WebSocket updates, booking confirmation, and Kafka events are still to be
-implemented.
+WebSocket updates, booking confirmation, and Kafka events are still to be implemented.
 
 ## Run locally
 
@@ -60,6 +60,8 @@ Do not commit `.env` or the client secret. Production deployments must use HTTPS
 | `POST` | `/api/v1/auth/logout` | Delete the current session |
 | `GET` | `/api/v1/screenings` | Upcoming screenings |
 | `GET` | `/api/v1/screenings/:screeningID/seats` | Seat map for one screening |
+| `POST` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Hold a seat for the current user |
+| `DELETE` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Release the current user's hold |
 
 ## Tests
 

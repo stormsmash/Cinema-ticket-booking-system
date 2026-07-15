@@ -20,7 +20,8 @@ type ScreeningService interface {
 }
 
 type screeningHandler struct {
-	service ScreeningService
+	service   ScreeningService
+	seatLocks SeatLockService
 }
 
 type movieResponse struct {
@@ -42,10 +43,12 @@ type screeningSummary struct {
 }
 
 type seatResponse struct {
-	ID     string            `json:"id"`
-	Row    string            `json:"row"`
-	Number int               `json:"number"`
-	Status domain.SeatStatus `json:"status"`
+	ID            string            `json:"id"`
+	Row           string            `json:"row"`
+	Number        int               `json:"number"`
+	Status        domain.SeatStatus `json:"status"`
+	LockedByMe    bool              `json:"locked_by_me"`
+	LockExpiresAt *time.Time        `json:"lock_expires_at,omitempty"`
 }
 
 type seatMapData struct {
@@ -56,8 +59,8 @@ type seatMapData struct {
 	Seats       []seatResponse     `json:"seats"`
 }
 
-func newScreeningHandler(service ScreeningService) *screeningHandler {
-	return &screeningHandler{service: service}
+func newScreeningHandler(service ScreeningService, seatLocks SeatLockService) *screeningHandler {
+	return &screeningHandler{service: service, seatLocks: seatLocks}
 }
 
 func (handler *screeningHandler) list(c *gin.Context) {
@@ -94,14 +97,34 @@ func (handler *screeningHandler) seats(c *gin.Context) {
 		return
 	}
 
+	locks, err := handler.seatLocks.CurrentLocks(c.Request.Context(), item.ID.Hex(), item.Seats)
+	if err != nil {
+		log.Printf("get screening seat locks: %v", err)
+		writeError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to load the seat map")
+		return
+	}
+
+	currentUserID := ""
+	if user, ok := optionalUser(c); ok {
+		currentUserID = user.ID.Hex()
+	}
+
 	seats := make([]seatResponse, 0, len(item.Seats))
 	for _, seat := range item.Seats {
-		seats = append(seats, seatResponse{
+		response := seatResponse{
 			ID:     seat.ID,
 			Row:    seat.Row,
 			Number: seat.Number,
 			Status: domain.SeatStatusAvailable,
-		})
+		}
+		if lock, exists := locks[seat.ID]; exists {
+			expiresAt := lock.ExpiresAt
+			response.Status = domain.SeatStatusLocked
+			response.LockedByMe = lock.UserID == currentUserID
+			response.LockExpiresAt = &expiresAt
+		}
+
+		seats = append(seats, response)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

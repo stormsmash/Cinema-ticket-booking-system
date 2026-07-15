@@ -19,6 +19,7 @@ type Dependencies struct {
 	Screenings ScreeningService
 	Auth       AuthService
 	AuthConfig AuthHandlerConfig
+	SeatLocks  SeatLockService
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
@@ -40,9 +41,24 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET("/auth/me", auth.requireAuthentication(), auth.me)
 	api.POST("/auth/logout", auth.logout)
 
-	screenings := newScreeningHandler(dependencies.Screenings)
+	screenings := newScreeningHandler(dependencies.Screenings, dependencies.SeatLocks)
+	seatLocks := newSeatLockHandler(dependencies.SeatLocks)
 	api.GET("/screenings", screenings.list)
-	api.GET("/screenings/:screeningID/seats", screenings.seats)
+	api.GET(
+		"/screenings/:screeningID/seats",
+		auth.optionalAuthentication(),
+		screenings.seats,
+	)
+	api.POST(
+		"/screenings/:screeningID/seats/:seatID/lock",
+		auth.requireAuthentication(),
+		seatLocks.acquire,
+	)
+	api.DELETE(
+		"/screenings/:screeningID/seats/:seatID/lock",
+		auth.requireAuthentication(),
+		seatLocks.release,
+	)
 
 	return router
 }

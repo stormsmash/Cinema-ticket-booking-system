@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 
-import type { SeatMap } from '../types'
+import type { Seat, SeatMap } from '../types'
 
 const props = defineProps<{
   seatMap: SeatMap
+  canLock: boolean
+  activeSeatId?: string
+  isUpdatingLock: boolean
 }>()
 
-const selectedSeatID = ref('')
+const emit = defineEmits<{
+  lock: [seatID: string]
+}>()
 
 const seatRows = computed(() => {
   const rows = new Map<string, SeatMap['seats']>()
@@ -21,16 +26,20 @@ const seatRows = computed(() => {
   return Array.from(rows.entries())
 })
 
-const selectedSeat = computed(() =>
-  props.seatMap.seats.find((seat) => seat.id === selectedSeatID.value),
-)
+function isSelected(seat: Seat) {
+  return seat.locked_by_me || seat.id === props.activeSeatId
+}
 
-watch(
-  () => props.seatMap.screening_id,
-  () => {
-    selectedSeatID.value = ''
-  },
-)
+function isDisabled(seat: Seat) {
+  if (props.isUpdatingLock || !props.canLock) return true
+  if (seat.status !== 'AVAILABLE') return true
+  return Boolean(props.activeSeatId)
+}
+
+function seatLabel(seat: Seat) {
+  if (seat.locked_by_me) return `Seat ${seat.id}, held by you`
+  return `Seat ${seat.id}, ${seat.status.toLowerCase()}`
+}
 </script>
 
 <template>
@@ -51,14 +60,11 @@ watch(
             :key="seat.id"
             type="button"
             class="seat"
-            :class="[
-              `seat--${seat.status.toLowerCase()}`,
-              { 'seat--selected': seat.id === selectedSeatID },
-            ]"
-            :disabled="seat.status !== 'AVAILABLE'"
-            :aria-label="`Seat ${seat.id}, ${seat.status.toLowerCase()}`"
-            :aria-pressed="seat.id === selectedSeatID"
-            @click="selectedSeatID = seat.id"
+            :class="[`seat--${seat.status.toLowerCase()}`, { 'seat--selected': isSelected(seat) }]"
+            :disabled="isDisabled(seat)"
+            :aria-label="seatLabel(seat)"
+            :aria-pressed="isSelected(seat)"
+            @click="emit('lock', seat.id)"
           >
             {{ seat.number }}
           </button>
@@ -68,18 +74,10 @@ watch(
 
     <div class="legend" aria-label="Seat status legend">
       <span><i class="legend-swatch legend-swatch--available"></i>Available</span>
-      <span><i class="legend-swatch legend-swatch--selected"></i>Selected</span>
+      <span><i class="legend-swatch legend-swatch--selected"></i>Your hold</span>
       <span><i class="legend-swatch legend-swatch--locked"></i>Locked</span>
       <span><i class="legend-swatch legend-swatch--booked"></i>Booked</span>
     </div>
-
-    <p class="selection" aria-live="polite">
-      <template v-if="selectedSeat">
-        Seat <strong>{{ selectedSeat.id }}</strong> selected. Locking and checkout come in the next
-        step.
-      </template>
-      <template v-else>Select an available seat to preview your choice.</template>
-    </p>
   </div>
 </template>
 
@@ -150,6 +148,12 @@ watch(
   background: #451a03;
 }
 
+.seat--locked.seat--selected {
+  border-color: #fbbf24;
+  color: #18181b;
+  background: #fbbf24;
+}
+
 .seat--booked {
   border-color: #3f3f46;
   color: #71717a;
@@ -196,16 +200,5 @@ watch(
 .legend-swatch--booked {
   border-color: #3f3f46;
   background: #18181b;
-}
-
-.selection {
-  min-height: 1.5rem;
-  margin: 1rem 0 0;
-  color: #d4d4d8;
-  font-size: 0.9rem;
-}
-
-.selection strong {
-  color: #fbbf24;
 }
 </style>
