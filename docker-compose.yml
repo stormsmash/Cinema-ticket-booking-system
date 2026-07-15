@@ -38,6 +38,7 @@ services:
       SESSION_TTL: ${SESSION_TTL:-24h}
       SEAT_LOCK_TTL: ${SEAT_LOCK_TTL:-5m}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:

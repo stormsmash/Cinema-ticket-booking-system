@@ -173,6 +173,7 @@ func TestMeReturnsAuthenticatedUser(t *testing.T) {
 			ID:    bson.NewObjectID(),
 			Email: "viewer@example.com",
 			Name:  "Cinema Viewer",
+			Role:  domain.UserRoleUser,
 		},
 	}
 	router := authTestRouter(service)
@@ -182,7 +183,8 @@ func TestMeReturnsAuthenticatedUser(t *testing.T) {
 
 	router.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), service.user.Email) {
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), service.user.Email) ||
+		!strings.Contains(recorder.Body.String(), `"role":"USER"`) {
 		t.Fatalf("unexpected response: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }

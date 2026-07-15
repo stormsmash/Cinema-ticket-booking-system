@@ -25,6 +25,7 @@ onMounted(store.load)
           <span>{{ user.email }}</span>
         </div>
       </div>
+      <a v-if="user.role === 'ADMIN'" class="admin-link" href="/admin">Admin dashboard</a>
       <button type="button" class="secondary-button" @click="store.logout">Sign out</button>
     </template>
 
@@ -114,6 +115,15 @@ small {
   text-decoration: none;
   font-weight: 750;
   cursor: pointer;
+}
+
+.admin-link {
+  display: inline-block;
+  margin-top: 0.9rem;
+  margin-right: 0.6rem;
+  color: #fbbf24;
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .google-button {

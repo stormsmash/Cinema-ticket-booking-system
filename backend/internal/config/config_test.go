@@ -21,6 +21,7 @@ func TestLoadUsesDefaults(t *testing.T) {
 		"SESSION_TTL",
 		"SEAT_LOCK_TTL",
 		"COOKIE_SECURE",
+		"ADMIN_EMAILS",
 	} {
 		t.Setenv(key, "")
 	}
@@ -50,6 +51,27 @@ func TestLoadUsesDefaults(t *testing.T) {
 	}
 	if cfg.GoogleOAuthEnabled() {
 		t.Fatal("expected Google OAuth to be disabled without credentials")
+	}
+}
+
+func TestLoadNormalizesAdminEmails(t *testing.T) {
+	t.Setenv("ADMIN_EMAILS", " Admin@Example.com,viewer@example.com,admin@example.com ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.AdminEmails) != 2 || cfg.AdminEmails[0] != "admin@example.com" ||
+		cfg.AdminEmails[1] != "viewer@example.com" {
+		t.Fatalf("unexpected admin emails: %#v", cfg.AdminEmails)
+	}
+}
+
+func TestLoadRejectsInvalidAdminEmail(t *testing.T) {
+	t.Setenv("ADMIN_EMAILS", "not-an-email")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid ADMIN_EMAILS to return an error")
 	}
 }
 

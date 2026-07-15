@@ -30,6 +30,15 @@ type storeStub struct {
 	releaseError   error
 }
 
+type auditRecorderStub struct {
+	items []domain.AuditLog
+}
+
+func (stub *auditRecorderStub) Create(_ context.Context, item domain.AuditLog) error {
+	stub.items = append(stub.items, item)
+	return nil
+}
+
 func (stub *storeStub) Acquire(
 	_ context.Context,
 	screeningID string,
@@ -68,6 +77,7 @@ func TestAcquireValidatesAndNormalizesSeat(t *testing.T) {
 			Seats: []domain.Seat{{ID: "A1", Row: "A", Number: 1}},
 		}},
 		store,
+		nil,
 		10*time.Minute,
 	)
 
@@ -92,6 +102,7 @@ func TestAcquireRejectsUnknownSeatBeforeRedis(t *testing.T) {
 			Seats: []domain.Seat{{ID: "A1"}},
 		}},
 		store,
+		nil,
 		time.Minute,
 	)
 
@@ -108,6 +119,7 @@ func TestAcquireMapsMissingScreening(t *testing.T) {
 	service := NewService(
 		screeningFinderStub{err: screening.ErrNotFound},
 		&storeStub{},
+		nil,
 		time.Minute,
 	)
 
@@ -121,6 +133,7 @@ func TestAcquirePreservesContentionError(t *testing.T) {
 	service := NewService(
 		screeningFinderStub{screening: domain.Screening{Seats: []domain.Seat{{ID: "A1"}}}},
 		&storeStub{acquireError: ErrAlreadyLocked},
+		nil,
 		time.Minute,
 	)
 
@@ -138,6 +151,7 @@ func TestAcquireRejectsBookedSeatBeforeRedis(t *testing.T) {
 			Status: domain.SeatStatusBooked,
 		}}}},
 		store,
+		nil,
 		time.Minute,
 	)
 
@@ -147,5 +161,42 @@ func TestAcquireRejectsBookedSeatBeforeRedis(t *testing.T) {
 	}
 	if store.acquiredSeatID != "" {
 		t.Fatal("Redis store must not be called for a booked seat")
+	}
+}
+
+func TestReleaseRecordsManualSeatAudit(t *testing.T) {
+	audits := &auditRecorderStub{}
+	screeningID := bson.NewObjectID()
+	service := NewService(
+		screeningFinderStub{screening: domain.Screening{Seats: []domain.Seat{{ID: "A1"}}}},
+		&storeStub{},
+		audits,
+		time.Minute,
+	)
+
+	if err := service.Release(context.Background(), screeningID.Hex(), "A1", "user-1"); err != nil {
+		t.Fatalf("release seat: %v", err)
+	}
+	if len(audits.items) != 1 || audits.items[0].Event != domain.AuditEventSeatReleased ||
+		audits.items[0].ScreeningID != screeningID {
+		t.Fatalf("unexpected audit log: %#v", audits.items)
+	}
+}
+
+func TestUnexpectedStoreFailureRecordsSystemError(t *testing.T) {
+	audits := &auditRecorderStub{}
+	service := NewService(
+		screeningFinderStub{screening: domain.Screening{Seats: []domain.Seat{{ID: "A1"}}}},
+		&storeStub{releaseError: errors.New("Redis unavailable")},
+		audits,
+		time.Minute,
+	)
+
+	err := service.Release(context.Background(), bson.NewObjectID().Hex(), "A1", "user-1")
+	if err == nil {
+		t.Fatal("expected release failure")
+	}
+	if len(audits.items) != 1 || audits.items[0].Event != domain.AuditEventSystemError {
+		t.Fatalf("unexpected audit log: %#v", audits.items)
 	}
 }

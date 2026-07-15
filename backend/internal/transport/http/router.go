@@ -24,6 +24,7 @@ type Dependencies struct {
 	SeatEvents  *realtime.Hub
 	FrontendURL string
 	Bookings    BookingService
+	Admin       AdminService
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
@@ -53,6 +54,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 		dependencies.FrontendURL,
 	)
 	bookings := newBookingHandler(dependencies.Bookings)
+	adminHandler := newAdminHandler(dependencies.Admin)
 	api.GET("/screenings", screenings.list)
 	api.GET(
 		"/screenings/:screeningID/seats",
@@ -64,6 +66,13 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 		auth.requireAuthentication(),
 		seatLocks.acquire,
 	)
+	adminRoutes := api.Group(
+		"/admin",
+		auth.requireAuthentication(),
+		auth.requireAdmin(),
+	)
+	adminRoutes.GET("/bookings", adminHandler.bookings)
+	adminRoutes.GET("/audit-logs", adminHandler.auditLogs)
 	api.DELETE(
 		"/screenings/:screeningID/seats/:seatID/lock",
 		auth.requireAuthentication(),

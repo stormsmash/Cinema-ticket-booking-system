@@ -6,12 +6,20 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+type UserRole string
+
+const (
+	UserRoleUser  UserRole = "USER"
+	UserRoleAdmin UserRole = "ADMIN"
+)
+
 type User struct {
 	ID            bson.ObjectID `bson:"_id,omitempty"`
 	GoogleSubject string        `bson:"google_subject"`
 	Email         string        `bson:"email"`
 	Name          string        `bson:"name"`
 	AvatarURL     string        `bson:"avatar_url,omitempty"`
+	Role          UserRole      `bson:"role"`
 	CreatedAt     time.Time     `bson:"created_at"`
 	UpdatedAt     time.Time     `bson:"updated_at"`
 }

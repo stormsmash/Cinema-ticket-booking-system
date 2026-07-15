@@ -40,6 +40,7 @@ describe('AuthStatus', () => {
               id: 'user-1',
               email: 'viewer@example.com',
               name: 'Cinema Viewer',
+              role: 'USER',
             },
           }),
         ),
@@ -53,6 +54,34 @@ describe('AuthStatus', () => {
     expect(wrapper.text()).toContain('Cinema Viewer')
     expect(wrapper.text()).toContain('viewer@example.com')
     expect(wrapper.text()).toContain('Sign out')
+  })
+
+  it('shows the dashboard link only to an admin', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(response({ data: { google_enabled: true } }))
+        .mockResolvedValueOnce(
+          response({
+            data: {
+              id: 'admin-1',
+              email: 'admin@example.com',
+              name: 'Cinema Admin',
+              role: 'ADMIN',
+            },
+          }),
+        ),
+    )
+
+    const wrapper = mount(AuthStatus, {
+      global: { plugins: [createPinia()] },
+    })
+    await flushPromises()
+
+    const link = wrapper.get('a.admin-link')
+    expect(link.attributes('href')).toBe('/admin')
+    expect(link.text()).toBe('Admin dashboard')
   })
 })
 

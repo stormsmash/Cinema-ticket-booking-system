@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -14,11 +15,19 @@ import (
 )
 
 type MongoUserRepository struct {
-	collection *mongo.Collection
+	collection  *mongo.Collection
+	adminEmails map[string]struct{}
 }
 
-func NewMongoUserRepository(collection *mongo.Collection) *MongoUserRepository {
-	return &MongoUserRepository{collection: collection}
+func NewMongoUserRepository(
+	collection *mongo.Collection,
+	adminEmails []string,
+) *MongoUserRepository {
+	allowlist := make(map[string]struct{}, len(adminEmails))
+	for _, email := range adminEmails {
+		allowlist[strings.ToLower(strings.TrimSpace(email))] = struct{}{}
+	}
+	return &MongoUserRepository{collection: collection, adminEmails: allowlist}
 }
 
 func (repository *MongoUserRepository) UpsertGoogleUser(
@@ -41,6 +50,7 @@ func (repository *MongoUserRepository) UpsertGoogleUser(
 			Key: "$setOnInsert",
 			Value: bson.D{
 				{Key: "google_subject", Value: profile.Subject},
+				{Key: "role", Value: domain.UserRoleUser},
 				{Key: "created_at", Value: now},
 			},
 		},
@@ -56,8 +66,23 @@ func (repository *MongoUserRepository) UpsertGoogleUser(
 	if err != nil {
 		return domain.User{}, fmt.Errorf("upsert: %w", err)
 	}
+	if repository.isAdminEmail(profile.Email) && user.Role != domain.UserRoleAdmin {
+		if _, err := repository.collection.UpdateOne(
+			ctx,
+			bson.D{{Key: "_id", Value: user.ID}},
+			bson.D{{Key: "$set", Value: bson.D{{Key: "role", Value: domain.UserRoleAdmin}}}},
+		); err != nil {
+			return domain.User{}, fmt.Errorf("promote configured admin: %w", err)
+		}
+		user.Role = domain.UserRoleAdmin
+	}
 
 	return user, nil
+}
+
+func (repository *MongoUserRepository) isAdminEmail(email string) bool {
+	_, exists := repository.adminEmails[strings.ToLower(strings.TrimSpace(email))]
+	return exists
 }
 
 func (repository *MongoUserRepository) FindByID(

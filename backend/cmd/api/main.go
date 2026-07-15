@@ -12,12 +12,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 
+	adminservice "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/admin"
+	auditservice "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/audit"
 	authservice "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/auth"
 	bookingservice "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/booking"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/config"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/domain"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/health"
 	mongostore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/mongodb"
 	redisstore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/redis"
@@ -62,7 +66,7 @@ func run() error {
 	}()
 
 	database := mongoClient.Database(cfg.MongoDatabase)
-	if err := mongostore.Bootstrap(startupContext, database); err != nil {
+	if err := mongostore.Bootstrap(startupContext, database, cfg.AdminEmails); err != nil {
 		return fmt.Errorf("bootstrap MongoDB: %w", err)
 	}
 	cancelStartup()
@@ -75,6 +79,7 @@ func run() error {
 	screeningService := screening.NewService(screeningRepository)
 	userRepository := authservice.NewMongoUserRepository(
 		database.Collection(mongostore.CollectionUsers),
+		cfg.AdminEmails,
 	)
 	sessionStore := authservice.NewRedisSessionStore(redisClient)
 	googleProvider := authservice.NewGoogleProvider(
@@ -90,9 +95,13 @@ func run() error {
 		cfg.GoogleOAuthEnabled(),
 	)
 	seatLockStore := seatlock.NewRedisStore(redisClient)
+	auditRepository := auditservice.NewMongoRepository(
+		database.Collection(mongostore.CollectionAuditLogs),
+	)
 	seatLockService := seatlock.NewService(
 		screeningService,
 		seatLockStore,
+		auditRepository,
 		cfg.SeatLockTTL,
 	)
 	seatEventPublisher := realtime.NewRedisPublisher(redisClient)
@@ -108,13 +117,39 @@ func run() error {
 		seatLockStore,
 		seatEventPublisher,
 	)
+	adminRepository := adminservice.NewMongoRepository(
+		database.Collection(mongostore.CollectionBookings),
+		database.Collection(mongostore.CollectionUsers),
+		database.Collection(mongostore.CollectionScreenings),
+		database.Collection(mongostore.CollectionAuditLogs),
+	)
 	eventHub := realtime.NewHub(200)
 	eventSource := realtime.NewRedisSeatEventSource(redisClient, cfg.RedisDB)
 	realtimeContext, stopRealtime := context.WithCancel(context.Background())
 	defer stopRealtime()
 	defer eventHub.Close()
 	go func() {
-		if err := eventSource.Run(realtimeContext, eventHub.Publish); err != nil {
+		if err := eventSource.Run(realtimeContext, func(event realtime.SeatEvent) {
+			eventHub.Publish(event)
+			if event.Type != realtime.SeatExpired {
+				return
+			}
+			screeningID, err := bson.ObjectIDFromHex(event.ScreeningID)
+			if err != nil {
+				return
+			}
+			auditContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := auditRepository.Create(auditContext, domain.AuditLog{
+				ID:          bson.NewObjectID(),
+				Event:       domain.AuditEventBookingTimeout,
+				ScreeningID: screeningID,
+				SeatID:      event.SeatID,
+				CreatedAt:   event.OccurredAt,
+			}); err != nil {
+				log.Printf("record expired seat audit: %v", err)
+			}
+		}); err != nil {
 			log.Printf("seat event source stopped: %v", err)
 		}
 	}()
@@ -140,6 +175,7 @@ func run() error {
 			SeatEvents:  eventHub,
 			FrontendURL: cfg.FrontendURL,
 			Bookings:    bookingService,
+			Admin:       adminRepository,
 			AuthConfig: httptransport.AuthHandlerConfig{
 				FrontendURL:  cfg.FrontendURL,
 				SessionTTL:   cfg.SessionTTL,

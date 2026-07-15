@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/mail"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,6 +38,7 @@ type Config struct {
 	SessionTTL         time.Duration
 	SeatLockTTL        time.Duration
 	CookieSecure       bool
+	AdminEmails        []string
 }
 
 func Load() (Config, error) {
@@ -59,6 +62,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("COOKIE_SECURE must be true or false")
 	}
 
+	adminEmails, err := parseAdminEmails(os.Getenv("ADMIN_EMAILS"))
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Port:               valueOrDefault("PORT", defaultPort),
 		GinMode:            valueOrDefault("GIN_MODE", defaultGinMode),
@@ -74,7 +82,30 @@ func Load() (Config, error) {
 		SessionTTL:         sessionTTL,
 		SeatLockTTL:        seatLockTTL,
 		CookieSecure:       cookieSecure,
+		AdminEmails:        adminEmails,
 	}, nil
+}
+
+func parseAdminEmails(value string) ([]string, error) {
+	seen := make(map[string]struct{})
+	emails := make([]string, 0)
+	for _, item := range strings.Split(value, ",") {
+		email := strings.ToLower(strings.TrimSpace(item))
+		if email == "" {
+			continue
+		}
+		parsed, err := mail.ParseAddress(email)
+		if err != nil || parsed.Address != email {
+			return nil, fmt.Errorf("ADMIN_EMAILS must contain comma-separated email addresses")
+		}
+		if _, exists := seen[email]; exists {
+			continue
+		}
+		seen[email] = struct{}{}
+		emails = append(emails, email)
+	}
+
+	return emails, nil
 }
 
 func (config Config) GoogleOAuthEnabled() bool {

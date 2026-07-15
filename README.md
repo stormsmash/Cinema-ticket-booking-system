@@ -14,8 +14,8 @@ small, tested milestones so each part can be explained and reviewed on its own.
 - WebSocket updates keep open seat maps in sync when a hold is created, released, or expires.
 - Mock payment confirmation writes the booking and audit log in one MongoDB transaction.
 - Redis Pub-Sub broadcasts a versioned `seat.booked` event after the transaction commits.
-
-The admin dashboard is still to be implemented.
+- Users have exact `USER` or `ADMIN` roles, and every admin API enforces the role on the server.
+- The admin dashboard lists bookings, filters them by movie or status, and shows audit events.
 
 ## Run locally
 
@@ -50,6 +50,29 @@ The app starts without Google credentials, but the sign-in button stays disabled
 Do not commit `.env` or the client secret. Production deployments must use HTTPS and set
 `COOKIE_SECURE=true`.
 
+## Admin setup
+
+New Google accounts receive the `USER` role. To make your account an administrator, add its exact
+Google email to `.env` and rebuild the API:
+
+```dotenv
+ADMIN_EMAILS=your-google-email@example.com
+```
+
+```powershell
+docker compose up --build -d api web
+```
+
+Multiple administrator emails can be separated with commas. At API startup, existing users without
+a role are backfilled as `USER`, and exact matching emails from `ADMIN_EMAILS` are promoted to
+`ADMIN`. Normal sign-in never overwrites an existing role. Open
+[http://localhost:3000/admin](http://localhost:3000/admin), or use the **Admin** link shown after an
+administrator signs in.
+
+The frontend route guard improves the user experience, but it is not the security boundary. The Go
+API reloads the current user from MongoDB for each authenticated request and returns `403` unless the
+stored role is exactly `ADMIN`.
+
 ## API available now
 
 | Method | Path | Purpose |
@@ -67,6 +90,8 @@ Do not commit `.env` or the client secret. Production deployments must use HTTPS
 | `DELETE` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Release the current user's hold |
 | `GET` | `/api/v1/screenings/:screeningID/seat-events` | WebSocket stream for seat changes |
 | `POST` | `/api/v1/bookings` | Confirm the current user's held seat |
+| `GET` | `/api/v1/admin/bookings` | Admin booking list with movie/status filters and pagination |
+| `GET` | `/api/v1/admin/audit-logs` | Admin audit log with event filter and pagination |
 
 The WebSocket event is only a change notification. After receiving it, the web app reloads the
 seat map so MongoDB remains authoritative for booked seats and Redis remains authoritative for
@@ -86,6 +111,20 @@ Docker Compose configures this automatically.
 Payment is deliberately mocked because the assignment evaluates booking correctness rather than a
 real payment gateway. If the MongoDB transaction fails, the API restores the user's original hold
 for whatever time remained.
+
+## Audit events
+
+The audit collection records important server-side events:
+
+| Event | When it is written |
+| --- | --- |
+| `BOOKING_SUCCESS` | A booking transaction commits successfully |
+| `BOOKING_TIMEOUT` | A temporary Redis seat hold expires |
+| `SEAT_RELEASED` | A user releases their own active hold |
+| `SYSTEM_ERROR` | An unexpected seat-lock storage operation fails |
+
+Expected business conflicts, such as choosing a seat already held by another user, are not logged
+as system errors.
 
 ## Message Queue use case
 

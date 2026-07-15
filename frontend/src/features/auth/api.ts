@@ -3,6 +3,7 @@ export interface AuthUser {
   email: string
   name: string
   avatar_url?: string
+  role: 'USER' | 'ADMIN'
 }
 
 export interface AuthConfig {

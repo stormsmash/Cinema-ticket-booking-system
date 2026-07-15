@@ -274,6 +274,9 @@ func (store *RedisStore) Release(
 	if result == -1 {
 		return ErrLockNotOwned
 	}
+	if result == 0 {
+		return ErrLockNotFound
+	}
 
 	return nil
 }

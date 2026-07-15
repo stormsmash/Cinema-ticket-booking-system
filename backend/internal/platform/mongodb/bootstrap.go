@@ -20,8 +20,11 @@ const (
 	CollectionAuditLogs  = "audit_logs"
 )
 
-func Bootstrap(ctx context.Context, database *mongo.Database) error {
+func Bootstrap(ctx context.Context, database *mongo.Database, adminEmails []string) error {
 	if err := createIndexes(ctx, database); err != nil {
+		return err
+	}
+	if err := configureUserRoles(ctx, database.Collection(CollectionUsers), adminEmails); err != nil {
 		return err
 	}
 
@@ -72,6 +75,21 @@ func createIndexes(ctx context.Context, database *mongo.Database) error {
 	_, err = database.Collection(CollectionBookings).Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys: bson.D{
+				{Key: "created_at", Value: -1},
+				{Key: "_id", Value: -1},
+			},
+			Options: options.Index().SetName("booking_created_at"),
+		},
+		{
+			Keys: bson.D{
+				{Key: "status", Value: 1},
+				{Key: "created_at", Value: -1},
+				{Key: "_id", Value: -1},
+			},
+			Options: options.Index().SetName("booking_status_created_at"),
+		},
+		{
+			Keys: bson.D{
 				{Key: "screening_id", Value: 1},
 				{Key: "seat_id", Value: 1},
 			},
@@ -105,6 +123,13 @@ func createIndexes(ctx context.Context, database *mongo.Database) error {
 
 	_, err = database.Collection(CollectionAuditLogs).Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
+			Keys: bson.D{
+				{Key: "booking_id", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("audit_booking_created_at"),
+		},
+		{
 			Keys: bson.D{{Key: "created_at", Value: -1}},
 			Options: options.Index().
 				SetName("audit_created_at"),
@@ -120,6 +145,39 @@ func createIndexes(ctx context.Context, database *mongo.Database) error {
 	})
 	if err != nil {
 		return fmt.Errorf("create audit log indexes: %w", err)
+	}
+
+	return nil
+}
+
+func configureUserRoles(
+	ctx context.Context,
+	collection *mongo.Collection,
+	adminEmails []string,
+) error {
+	missingRole := bson.D{{Key: "$or", Value: bson.A{
+		bson.D{{Key: "role", Value: bson.D{{Key: "$exists", Value: false}}}},
+		bson.D{{Key: "role", Value: nil}},
+		bson.D{{Key: "role", Value: ""}},
+	}}}
+	if _, err := collection.UpdateMany(
+		ctx,
+		missingRole,
+		bson.D{{Key: "$set", Value: bson.D{{Key: "role", Value: domain.UserRoleUser}}}},
+	); err != nil {
+		return fmt.Errorf("backfill user roles: %w", err)
+	}
+
+	if len(adminEmails) == 0 {
+		return nil
+	}
+	if _, err := collection.UpdateMany(
+		ctx,
+		bson.D{{Key: "email", Value: bson.D{{Key: "$in", Value: adminEmails}}}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "role", Value: domain.UserRoleAdmin}}}},
+		options.UpdateMany().SetCollation(&options.Collation{Locale: "en", Strength: 2}),
+	); err != nil {
+		return fmt.Errorf("promote configured admins: %w", err)
 	}
 
 	return nil

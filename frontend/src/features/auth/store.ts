@@ -15,9 +15,21 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser | null>(null)
   const googleEnabled = ref(false)
   const isLoading = ref(false)
+  const initialized = ref(false)
   const error = ref('')
+  let loadPromise: Promise<void> | null = null
 
-  async function load() {
+  function load() {
+    if (initialized.value) return Promise.resolve()
+    if (loadPromise) return loadPromise
+
+    loadPromise = loadAuth().finally(() => {
+      loadPromise = null
+    })
+    return loadPromise
+  }
+
+  async function loadAuth() {
     isLoading.value = true
     error.value = readCallbackError()
 
@@ -28,6 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch {
       error.value = 'Unable to check the sign-in status.'
     } finally {
+      initialized.value = true
       isLoading.value = false
     }
   }
@@ -47,8 +60,10 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     googleEnabled,
     isLoading,
+    initialized,
     error,
     load,
+    ensureLoaded: load,
     logout,
   }
 })

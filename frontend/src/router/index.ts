@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+import { useAuthStore } from '@/features/auth/store'
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -8,7 +10,23 @@ const router = createRouter({
       name: 'home',
       component: () => import('@/views/HomeView.vue'),
     },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('@/views/AdminView.vue'),
+      meta: { requiresAdmin: true },
+    },
   ],
+})
+
+router.beforeEach(async (to) => {
+  if (!to.meta.requiresAdmin) return true
+
+  const auth = useAuthStore()
+  await auth.ensureLoaded()
+  if (auth.user?.role === 'ADMIN') return true
+
+  return { name: 'home' }
 })
 
 export default router

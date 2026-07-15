@@ -50,6 +50,20 @@ type userResponse struct {
 	Email     string `json:"email"`
 	Name      string `json:"name"`
 	AvatarURL string `json:"avatar_url,omitempty"`
+	Role      string `json:"role"`
+}
+
+func (handler *authHandler) requireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := optionalUser(c)
+		if !exists || user.Role != domain.UserRoleAdmin {
+			writeError(c, http.StatusForbidden, "ADMIN_REQUIRED", "Administrator access is required")
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func newAuthHandler(service AuthService, config AuthHandlerConfig) *authHandler {
@@ -258,5 +272,6 @@ func toUserResponse(user domain.User) userResponse {
 		Email:     user.Email,
 		Name:      user.Name,
 		AvatarURL: user.AvatarURL,
+		Role:      string(user.Role),
 	}
 }
