@@ -16,6 +16,7 @@ const (
 type SeatEvent struct {
 	Version     int           `json:"version"`
 	Type        SeatEventType `json:"type"`
+	BookingID   string        `json:"booking_id,omitempty"`
 	ScreeningID string        `json:"screening_id"`
 	SeatID      string        `json:"seat_id"`
 	Status      string        `json:"status"`

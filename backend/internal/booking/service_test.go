@@ -64,11 +64,12 @@ func (stub *lockClaimerStub) CommitClaim(context.Context, seatlock.Claim) error 
 
 type eventPublisherStub struct {
 	events []realtime.SeatEvent
+	err    error
 }
 
 func (stub *eventPublisherStub) Publish(_ context.Context, event realtime.SeatEvent) error {
 	stub.events = append(stub.events, event)
-	return nil
+	return stub.err
 }
 
 func bookingTestScreening() domain.Screening {
@@ -102,8 +103,28 @@ func TestConfirmCreatesBookingThenCommitsClaim(t *testing.T) {
 	if !locks.claimed || !locks.committed || locks.restored {
 		t.Fatalf("unexpected claim lifecycle: %#v", locks)
 	}
-	if len(events.events) != 1 || events.events[0].Type != realtime.SeatBooked {
+	if len(events.events) != 1 || events.events[0].Type != realtime.SeatBooked ||
+		events.events[0].BookingID != confirmation.Booking.ID.Hex() {
 		t.Fatalf("expected one booked event, got %#v", events.events)
+	}
+}
+
+func TestConfirmKeepsBookingWhenRealtimePublishFails(t *testing.T) {
+	item := bookingTestScreening()
+	repository := &repositoryStub{findError: ErrBookingNotFound}
+	locks := &lockClaimerStub{}
+	events := &eventPublisherStub{err: errors.New("Redis unavailable")}
+	service := NewService(repository, screeningFinderStub{screening: item}, locks, events)
+
+	confirmation, err := service.Confirm(context.Background(), item.ID.Hex(), "A1", "user-1")
+	if err != nil {
+		t.Fatalf("confirm booking: %v", err)
+	}
+	if !confirmation.Created || len(events.events) != 1 {
+		t.Fatalf("booking must stay successful after publish failure: %#v", confirmation)
+	}
+	if !locks.committed || locks.restored {
+		t.Fatalf("committed booking claim must not be restored: %#v", locks)
 	}
 }
 
@@ -129,13 +150,17 @@ func TestConfirmRestoresClaimWhenMongoFails(t *testing.T) {
 		createError: errors.New("MongoDB unavailable"),
 	}
 	locks := &lockClaimerStub{}
-	service := NewService(repository, screeningFinderStub{screening: item}, locks, nil)
+	events := &eventPublisherStub{}
+	service := NewService(repository, screeningFinderStub{screening: item}, locks, events)
 
 	if _, err := service.Confirm(context.Background(), item.ID.Hex(), "A1", "user-1"); err == nil {
 		t.Fatal("expected MongoDB failure")
 	}
 	if !locks.restored || locks.committed {
 		t.Fatalf("expected claim restoration, got %#v", locks)
+	}
+	if len(events.events) != 0 {
+		t.Fatalf("failed booking must not publish an event: %#v", events.events)
 	}
 }
 
@@ -150,7 +175,8 @@ func TestConfirmReturnsExistingBookingForSameUser(t *testing.T) {
 	}
 	repository := &repositoryStub{existing: existing}
 	locks := &lockClaimerStub{}
-	service := NewService(repository, screeningFinderStub{screening: item}, locks, nil)
+	events := &eventPublisherStub{}
+	service := NewService(repository, screeningFinderStub{screening: item}, locks, events)
 
 	confirmation, err := service.Confirm(context.Background(), item.ID.Hex(), "A1", "user-1")
 	if err != nil {
@@ -161,6 +187,9 @@ func TestConfirmReturnsExistingBookingForSameUser(t *testing.T) {
 	}
 	if locks.claimed {
 		t.Fatal("idempotent retry must not require the deleted Redis lock")
+	}
+	if len(events.events) != 0 {
+		t.Fatal("idempotent retry must not publish a duplicate event")
 	}
 }
 

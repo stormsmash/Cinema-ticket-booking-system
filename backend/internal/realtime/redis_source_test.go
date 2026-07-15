@@ -42,6 +42,7 @@ func TestRedisSourceAcceptsBookedChannelEvent(t *testing.T) {
 	want := SeatEvent{
 		Version:     EventVersion,
 		Type:        SeatBooked,
+		BookingID:   bson.NewObjectID().Hex(),
 		ScreeningID: bson.NewObjectID().Hex(),
 		SeatID:      "D8",
 		Status:      "BOOKED",
@@ -56,7 +57,58 @@ func TestRedisSourceAcceptsBookedChannelEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse event: %v", err)
 	}
-	if !ok || got.Type != SeatBooked || got.SeatID != want.SeatID {
+	if !ok || got.Type != SeatBooked || got.SeatID != want.SeatID ||
+		got.BookingID != want.BookingID {
 		t.Fatalf("unexpected event: %#v", got)
+	}
+}
+
+func TestRedisSourceRejectsInvalidBookedEvents(t *testing.T) {
+	source := &RedisSeatEventSource{}
+	now := time.Now().UTC()
+	expiresAt := now.Add(time.Minute)
+	valid := SeatEvent{
+		Version:     EventVersion,
+		Type:        SeatBooked,
+		BookingID:   bson.NewObjectID().Hex(),
+		ScreeningID: bson.NewObjectID().Hex(),
+		SeatID:      "D8",
+		Status:      "BOOKED",
+		OccurredAt:  now,
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*SeatEvent)
+	}{
+		{name: "missing booking ID", mutate: func(event *SeatEvent) { event.BookingID = "" }},
+		{name: "invalid booking ID", mutate: func(event *SeatEvent) { event.BookingID = "bad" }},
+		{name: "invalid screening ID", mutate: func(event *SeatEvent) { event.ScreeningID = "bad" }},
+		{name: "blank seat", mutate: func(event *SeatEvent) { event.SeatID = " " }},
+		{name: "long seat", mutate: func(event *SeatEvent) { event.SeatID = "THIS-SEAT-ID-IS-TOO-LONG" }},
+		{name: "wrong version", mutate: func(event *SeatEvent) { event.Version = 2 }},
+		{name: "wrong type", mutate: func(event *SeatEvent) { event.Type = SeatLocked }},
+		{name: "wrong status", mutate: func(event *SeatEvent) { event.Status = "AVAILABLE" }},
+		{name: "missing time", mutate: func(event *SeatEvent) { event.OccurredAt = time.Time{} }},
+		{name: "booking expiry", mutate: func(event *SeatEvent) { event.ExpiresAt = &expiresAt }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := valid
+			test.mutate(&event)
+			payload, err := json.Marshal(event)
+			if err != nil {
+				t.Fatalf("marshal event: %v", err)
+			}
+
+			_, ok, err := source.toSeatEvent(context.Background(), seatEventChannel, string(payload))
+			if err != nil {
+				t.Fatalf("parse event: %v", err)
+			}
+			if ok {
+				t.Fatal("expected invalid event to be ignored")
+			}
+		})
 	}
 }

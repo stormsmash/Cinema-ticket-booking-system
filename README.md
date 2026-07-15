@@ -13,8 +13,9 @@ small, tested milestones so each part can be explained and reviewed on its own.
 - The seat map shows current locks and identifies the lock owned by the signed-in user.
 - WebSocket updates keep open seat maps in sync when a hold is created, released, or expires.
 - Mock payment confirmation writes the booking and audit log in one MongoDB transaction.
+- Redis Pub-Sub broadcasts a versioned `seat.booked` event after the transaction commits.
 
-The admin dashboard and Kafka event consumer are still to be implemented.
+The admin dashboard is still to be implemented.
 
 ## Run locally
 
@@ -85,6 +86,36 @@ Docker Compose configures this automatically.
 Payment is deliberately mocked because the assignment evaluates booking correctness rather than a
 real payment gateway. If the MongoDB transaction fails, the API restores the user's original hold
 for whatever time remained.
+
+## Message Queue use case
+
+This project chooses **Redis Pub-Sub**, one of the message queue options allowed by the assignment.
+It is used for a real booking event rather than running an unused broker:
+
+```mermaid
+flowchart LR
+    A["MongoDB booking commit"] --> B["Publish seat.booked"]
+    B --> C["Redis Pub-Sub"]
+    C --> D["Go event subscriber"]
+    D --> E["WebSocket hub"]
+    E --> F["Open browsers reload the seat map"]
+```
+
+The event includes `booking_id`, `screening_id`, `seat_id`, status, event version, and occurrence
+time. It is published only after the MongoDB transaction commits. A failed booking never emits a
+booked event, while a Redis publish failure does not roll back a booking that is already durable.
+
+To watch the channel while testing a booking in the browser:
+
+```powershell
+docker compose exec redis redis-cli SUBSCRIBE cinema:seat-events:v1
+```
+
+After confirming a seat, the subscriber shows a `seat.booked` JSON message and other open browser
+windows change that seat to `BOOKED`. Redis Pub-Sub uses
+[at-most-once delivery](https://redis.io/docs/latest/develop/pubsub/) and does not keep old events.
+MongoDB remains the source of truth, so reconnecting clients reload the current seat map instead of
+trying to rebuild state from Pub-Sub history.
 
 ## Tests
 

@@ -112,11 +112,7 @@ func (source *RedisSeatEventSource) toSeatEvent(
 		if err := json.Unmarshal([]byte(key), &event); err != nil {
 			return SeatEvent{}, false, nil
 		}
-		if event.Version != EventVersion || event.Type != SeatBooked ||
-			event.Status != "BOOKED" || event.SeatID == "" {
-			return SeatEvent{}, false, nil
-		}
-		if _, err := bson.ObjectIDFromHex(event.ScreeningID); err != nil {
+		if !validBookedEvent(event) {
 			return SeatEvent{}, false, nil
 		}
 		return event, true, nil
@@ -170,6 +166,26 @@ func (source *RedisSeatEventSource) toSeatEvent(
 	default:
 		return SeatEvent{}, false, nil
 	}
+}
+
+func validBookedEvent(event SeatEvent) bool {
+	if event.Version != EventVersion || event.Type != SeatBooked || event.Status != "BOOKED" {
+		return false
+	}
+	if event.SeatID == "" || event.SeatID != strings.TrimSpace(event.SeatID) || len(event.SeatID) > 16 {
+		return false
+	}
+	if event.OccurredAt.IsZero() || event.ExpiresAt != nil {
+		return false
+	}
+	if _, err := bson.ObjectIDFromHex(event.BookingID); err != nil {
+		return false
+	}
+	if _, err := bson.ObjectIDFromHex(event.ScreeningID); err != nil {
+		return false
+	}
+
+	return true
 }
 
 func (source *RedisSeatEventSource) eventChannel(eventName string) string {

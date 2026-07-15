@@ -79,6 +79,17 @@ describe('seat event WebSocket', () => {
         occurred_at: '2026-07-15T12:01:00Z',
       }),
     )
+    socket.message(
+      JSON.stringify({
+        version: 1,
+        type: 'seat.booked',
+        booking_id: 'booking-1',
+        screening_id: 'screening-1',
+        seat_id: 'A2',
+        status: 'BOOKED',
+        occurred_at: '2026-07-15T12:01:00Z',
+      }),
+    )
 
     expect(onEvent).toHaveBeenCalledTimes(2)
     expect(onEvent.mock.calls[0]?.[0].seat_id).toBe('A1')

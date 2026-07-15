@@ -230,6 +230,7 @@ func (service *Service) publishBooked(item domain.Booking) {
 	event := realtime.SeatEvent{
 		Version:     realtime.EventVersion,
 		Type:        realtime.SeatBooked,
+		BookingID:   item.ID.Hex(),
 		ScreeningID: item.ScreeningID.Hex(),
 		SeatID:      item.SeatID,
 		Status:      string(domain.SeatStatusBooked),

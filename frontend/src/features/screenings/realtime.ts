@@ -70,15 +70,25 @@ function parseSeatEvent(value: string, screeningID: string): SeatEvent | null {
       ((event.type === 'seat.released' || event.type === 'seat.expired') &&
         event.status === 'AVAILABLE') ||
       (event.type === 'seat.booked' && event.status === 'BOOKED')
+    const validBookingID =
+      event.type !== 'seat.booked' ||
+      (typeof event.booking_id === 'string' && event.booking_id.trim().length > 0)
+    const validSeatID =
+      typeof event.seat_id === 'string' &&
+      event.seat_id.length > 0 &&
+      event.seat_id === event.seat_id.trim() &&
+      event.seat_id.length <= 16
+    const validOccurredAt =
+      typeof event.occurred_at === 'string' && !Number.isNaN(Date.parse(event.occurred_at))
 
     if (
       event.version !== 1 ||
       !validType ||
       !validStatus ||
+      !validBookingID ||
       event.screening_id !== screeningID ||
-      typeof event.seat_id !== 'string' ||
-      event.seat_id === '' ||
-      typeof event.occurred_at !== 'string'
+      !validSeatID ||
+      !validOccurredAt
     ) {
       return null
     }

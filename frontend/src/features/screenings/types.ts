@@ -53,6 +53,7 @@ export interface Booking {
 export interface SeatEvent {
   version: 1
   type: 'seat.locked' | 'seat.released' | 'seat.expired' | 'seat.booked'
+  booking_id?: string
   screening_id: string
   seat_id: string
   status: 'LOCKED' | 'AVAILABLE' | 'BOOKED'
