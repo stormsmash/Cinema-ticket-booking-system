@@ -1,0 +1,484 @@
+{
+  "info": {
+    "_postman_id": "d8280d3b-f9f3-4bc9-9776-e0a56a50cf70",
+    "name": "Cinema ticket booking system",
+    "description": "Local API checks for the cinema take-home assignment. Start the Docker Compose stack, sign in through the browser, and set the cinema_session collection variable before running authenticated requests. Run the folders from top to bottom. The booking flow selects the first available seat automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "cinema_session",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "screening_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seat_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "movie_filter",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "booking_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/health/live"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API process is live', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/health/ready"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('MongoDB and Redis are ready', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('ready');",
+                  "  pm.expect(body.checks.mongodb).to.eql('ok');",
+                  "  pm.expect(body.checks.redis).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Authentication",
+      "item": [
+        {
+          "name": "OAuth configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/config"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('OAuth configuration is available', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.google_enabled).to.be.a('boolean');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Session belongs to an admin', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const user = pm.response.json().data;",
+                  "  pm.expect(user.id).to.be.a('string').and.not.empty;",
+                  "  pm.expect(user.role).to.eql('ADMIN');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Booking happy path",
+      "item": [
+        {
+          "name": "List screenings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/screenings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('At least one screening is available', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const screenings = pm.response.json().data;",
+                  "  pm.expect(screenings).to.be.an('array').that.is.not.empty;",
+                  "  pm.collectionVariables.set('screening_id', screenings[0].id);",
+                  "  pm.collectionVariables.set('movie_filter', screenings[0].movie.title);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Load seat map and choose an available seat",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/screenings/{{screening_id}}/seats"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('An available seat can be selected', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const seats = pm.response.json().data.seats;",
+                  "  const seat = seats.find(function (item) { return item.status === 'AVAILABLE'; });",
+                  "  pm.expect(seat, 'available seat').to.exist;",
+                  "  pm.collectionVariables.set('seat_id', seat.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lock seat for release test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/screenings/{{screening_id}}/seats/{{seat_id}}/lock"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Seat is locked for this user', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.status).to.eql('LOCKED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Release seat",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/screenings/{{screening_id}}/seats/{{seat_id}}/lock"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Owner can release the seat', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lock seat for booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/screenings/{{screening_id}}/seats/{{seat_id}}/lock"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Released seat can be locked again', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.status).to.eql('LOCKED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"screening_id\": \"{{screening_id}}\",\n  \"seat_id\": \"{{seat_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/bookings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Booking is persisted', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "  const booking = pm.response.json().data;",
+                  "  pm.expect(booking.status).to.eql('BOOKED');",
+                  "  pm.collectionVariables.set('booking_id', booking.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Admin checks",
+      "item": [
+        {
+          "name": "Filter bookings by movie",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/admin/bookings?movie={{movie_filter}}&status=BOOKED&page=1&page_size=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin can find the booking', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.some(function (item) { return item.id === pm.collectionVariables.get('booking_id'); })).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Booking success audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/admin/audit-logs?event=BOOKING_SUCCESS&page=1&page_size=100"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Booking success is audited', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.some(function (item) { return item.booking_id === pm.collectionVariables.get('booking_id'); })).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Session cleanup",
+      "item": [
+        {
+          "name": "Logout (run last)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "cinema_session={{cinema_session}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Session is deleted', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

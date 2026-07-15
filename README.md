@@ -41,7 +41,7 @@ The source of truth is split by the lifetime of the data:
 | Authentication | Google OAuth 2.0 | Create a user and issue a Redis-backed session |
 | Web server | Nginx | Serve Vue and proxy API/WebSocket traffic |
 | Deployment | Docker, Docker Compose | Start the complete local system with one command |
-| Tests | Go testing, Vitest, Vue Test Utils | Backend rules, API access, stores, and UI behavior |
+| Tests | Go testing, Vitest, Vue Test Utils, Postman | Backend rules, API access, stores, and UI behavior |
 
 ## 3. Booking flow
 
@@ -116,14 +116,16 @@ sequenceDiagram
     participant API as Go API
     participant DB as MongoDB
     participant MQ as Redis Pub/Sub
-    participant WS as WebSocket hub
+    participant Consumer as Go event consumer
+    participant Mock as Mock notifier
     participant UI as Open browsers
 
     API->>DB: Commit seat, booking, and audit log
     DB-->>API: Transaction committed
     API->>MQ: Publish seat.booked v1
-    MQ->>WS: Deliver event
-    WS->>UI: Notify screening and seat changed
+    MQ->>Consumer: Deliver event
+    Consumer->>Mock: Write booking confirmation log
+    Consumer->>UI: Notify screening and seat changed
     UI->>API: Reload current seat map
 ```
 
@@ -133,6 +135,16 @@ is published only after MongoDB commits, so a failed booking cannot send a booke
 Redis Pub/Sub has at-most-once delivery and does not store old messages. This is acceptable here
 because MongoDB remains authoritative and every reconnect reloads the current seat map. A production
 notification service that must never lose work would use a durable queue or an outbox pattern.
+
+The same booked-event consumer triggers the optional mock notification. After validating a
+`seat.booked` event, it writes one line like this to the API log:
+
+```text
+MOCK_NOTIFICATION booking_confirmed booking_id=<id> screening_id=<id> seat_id=A1
+```
+
+No notification is written before the MongoDB transaction commits. The mock contains booking
+references only and does not put an email address or OAuth data in the log.
 
 ## 6. How to run
 
@@ -201,6 +213,7 @@ the stored role is exactly `ADMIN`. The frontend route guard is only for navigat
 | Single Redis container | Enough to demonstrate a lock shared by multiple API processes | It is not highly available; Redis failure stops new holds |
 | Single-member MongoDB replica set | Transactions work locally with one Compose command | It demonstrates transactions, not database redundancy |
 | Redis Pub/Sub for booked events | It is one of the allowed MQ choices and fits realtime notification | Delivery is at most once and there is no replay |
+| Mock notification writes to the API log | Shows an MQ-triggered notification without provider credentials | It is not durable and multiple API replicas could write duplicates |
 | Reload after every realtime event | MongoDB and Redis stay authoritative | Each event causes another API read |
 | Admin allowlist in environment config | No separate role-management screen is needed for this assignment | Changing admins requires an environment update and API rebuild |
 | Local cookies use `Secure=false` | OAuth works on `http://localhost` | Production must use HTTPS, `Secure=true`, and should add explicit CSRF protection |
@@ -292,11 +305,40 @@ To inspect the booked-event channel while confirming a seat in the browser:
 docker compose exec redis redis-cli SUBSCRIBE cinema:seat-events:v1
 ```
 
+To watch the optional mock notification consumer:
+
+```powershell
+docker compose logs -f api | Select-String MOCK_NOTIFICATION
+```
+
+## Postman collection
+
+Import
+[Cinema-ticket-booking.postman_collection.json](postman/Cinema-ticket-booking.postman_collection.json)
+into Postman. The collection contains 13 requests and test scripts in this order:
+
+1. Check API, MongoDB, and Redis health.
+2. Check OAuth configuration and the current admin session.
+3. Load a screening, select the first available seat, lock and release it, then lock and book it.
+4. Find the new booking through the admin movie filter and confirm its audit log.
+5. Log out after every other request has completed.
+
+Authenticated requests need a local session:
+
+1. Configure `ADMIN_EMAILS`, then sign in at [http://localhost:3000](http://localhost:3000).
+2. In browser developer tools, open Application, Cookies, `http://localhost:3000`.
+3. Copy the local `cinema_session` value into the Postman collection variable with the same name.
+4. Run the collection from top to bottom.
+
+The exported collection keeps `cinema_session` blank. Do not commit or share a real session value.
+The runner books one available seat, so use seeded local data rather than a shared environment.
+
 ## Project layout
 
 ```text
 backend/             Go API, domain rules, MongoDB, Redis, and tests
 frontend/            Vue application, unit tests, and Nginx config
+postman/             Importable API collection with test scripts
 docker-compose.yml   Complete local stack
 .env.example         Local configuration template without secrets
 ```

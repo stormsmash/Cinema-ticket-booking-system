@@ -23,6 +23,7 @@ import (
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/config"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/domain"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/health"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/notification"
 	mongostore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/mongodb"
 	redisstore "github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/platform/redis"
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/realtime"
@@ -125,12 +126,21 @@ func run() error {
 	)
 	eventHub := realtime.NewHub(200)
 	eventSource := realtime.NewRedisSeatEventSource(redisClient, cfg.RedisDB)
+	mockNotificationSender := notification.NewMockSender(log.Default())
 	realtimeContext, stopRealtime := context.WithCancel(context.Background())
 	defer stopRealtime()
 	defer eventHub.Close()
 	go func() {
 		if err := eventSource.Run(realtimeContext, func(event realtime.SeatEvent) {
 			eventHub.Publish(event)
+			if event.Type == realtime.SeatBooked {
+				notificationContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				err := mockNotificationSender.SendBookingConfirmation(notificationContext, event)
+				cancel()
+				if err != nil {
+					log.Printf("send mock booking notification: %v", err)
+				}
+			}
 			if event.Type != realtime.SeatExpired {
 				return
 			}
