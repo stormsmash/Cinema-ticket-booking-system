@@ -7,6 +7,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/domain"
 )
@@ -57,6 +58,31 @@ func (repository *MongoRepository) FindBooked(
 	}
 
 	return item, nil
+}
+
+func (repository *MongoRepository) ListBookedByUser(
+	ctx context.Context,
+	userID string,
+) ([]domain.Booking, error) {
+	cursor, err := repository.bookings.Find(
+		ctx,
+		bson.D{
+			{Key: "user_id", Value: userID},
+			{Key: "status", Value: domain.BookingStatusBooked},
+		},
+		options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(50),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find user bookings: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	items := make([]domain.Booking, 0)
+	if err := cursor.All(ctx, &items); err != nil {
+		return nil, fmt.Errorf("decode user bookings: %w", err)
+	}
+
+	return items, nil
 }
 
 func (repository *MongoRepository) CreateBooked(

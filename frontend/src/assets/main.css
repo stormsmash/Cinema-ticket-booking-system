@@ -1,8 +1,9 @@
 :root {
-  color: #f8fafc;
-  background: #09090b;
+  color: #222226;
+  background: #f5f5f6;
   font-family:
-    Inter,
+    'Noto Sans Thai',
+    Tahoma,
     ui-sans-serif,
     system-ui,
     -apple-system,
@@ -11,6 +12,8 @@
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  color-scheme: light;
+  scroll-behavior: smooth;
 }
 
 * {
@@ -21,7 +24,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background: #09090b;
+  background: #f5f5f6;
 }
 
 button,
@@ -32,11 +35,44 @@ select {
 
 button:focus-visible,
 a:focus-visible,
-select:focus-visible {
-  outline: 3px solid #fbbf24;
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #d91920;
   outline-offset: 3px;
+}
+
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+::selection {
+  color: #fff;
+  background: #d91920;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 #app {
   min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    scroll-behavior: auto;
+  }
 }

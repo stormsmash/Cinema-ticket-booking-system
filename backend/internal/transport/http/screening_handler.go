@@ -36,10 +36,11 @@ type auditoriumResponse struct {
 }
 
 type screeningSummary struct {
-	ID         string             `json:"id"`
-	Movie      movieResponse      `json:"movie"`
-	Auditorium auditoriumResponse `json:"auditorium"`
-	StartsAt   time.Time          `json:"starts_at"`
+	ID              string             `json:"id"`
+	Movie           movieResponse      `json:"movie"`
+	Auditorium      auditoriumResponse `json:"auditorium"`
+	StartsAt        time.Time          `json:"starts_at"`
+	TicketPriceBaht int                `json:"ticket_price_baht"`
 }
 
 type seatResponse struct {
@@ -52,11 +53,12 @@ type seatResponse struct {
 }
 
 type seatMapData struct {
-	ScreeningID string             `json:"screening_id"`
-	Movie       movieResponse      `json:"movie"`
-	Auditorium  auditoriumResponse `json:"auditorium"`
-	StartsAt    time.Time          `json:"starts_at"`
-	Seats       []seatResponse     `json:"seats"`
+	ScreeningID     string             `json:"screening_id"`
+	Movie           movieResponse      `json:"movie"`
+	Auditorium      auditoriumResponse `json:"auditorium"`
+	StartsAt        time.Time          `json:"starts_at"`
+	TicketPriceBaht int                `json:"ticket_price_baht"`
+	Seats           []seatResponse     `json:"seats"`
 }
 
 func newScreeningHandler(service ScreeningService, seatLocks SeatLockService) *screeningHandler {
@@ -133,21 +135,23 @@ func (handler *screeningHandler) seats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": seatMapData{
-			ScreeningID: item.ID.Hex(),
-			Movie:       toMovieResponse(item.Movie),
-			Auditorium:  toAuditoriumResponse(item.Auditorium),
-			StartsAt:    item.StartsAt,
-			Seats:       seats,
+			ScreeningID:     item.ID.Hex(),
+			Movie:           toMovieResponse(item.Movie),
+			Auditorium:      toAuditoriumResponse(item.Auditorium),
+			StartsAt:        item.StartsAt,
+			TicketPriceBaht: item.TicketPriceBaht,
+			Seats:           seats,
 		},
 	})
 }
 
 func toScreeningSummary(item domain.Screening) screeningSummary {
 	return screeningSummary{
-		ID:         item.ID.Hex(),
-		Movie:      toMovieResponse(item.Movie),
-		Auditorium: toAuditoriumResponse(item.Auditorium),
-		StartsAt:   item.StartsAt,
+		ID:              item.ID.Hex(),
+		Movie:           toMovieResponse(item.Movie),
+		Auditorium:      toAuditoriumResponse(item.Auditorium),
+		StartsAt:        item.StartsAt,
+		TicketPriceBaht: item.TicketPriceBaht,
 	}
 }
 

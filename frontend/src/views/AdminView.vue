@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import BrandMark from '@/features/movies/components/BrandMark.vue'
 import { useAdminStore } from '@/features/admin/store'
 
 const store = useAdminStore()
@@ -18,246 +19,388 @@ const {
   auditsError,
 } = storeToRefs(store)
 
-const dateFormatter = new Intl.DateTimeFormat('en-GB', {
+const dateFormatter = new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'medium',
   timeStyle: 'short',
+  timeZone: 'Asia/Bangkok',
 })
+
+const bookedOnPage = computed(
+  () => bookings.value.filter((booking) => booking.status === 'BOOKED').length,
+)
+const successEventsOnPage = computed(
+  () => auditLogs.value.filter((entry) => entry.event === 'BOOKING_SUCCESS').length,
+)
 
 function formatDate(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '—' : dateFormatter.format(date)
 }
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    BOOKED: 'จองสำเร็จ',
+    HOLDING: 'กำลังล็อก',
+    TIMED_OUT: 'หมดเวลา',
+    CANCELLED: 'ยกเลิก',
+  }
+  return labels[status] ?? status
+}
+
 onMounted(store.loadAll)
 </script>
 
 <template>
-  <main class="admin-shell">
-    <header class="admin-header">
-      <div>
-        <p class="section-label">Cinema operations</p>
-        <h1>Admin dashboard</h1>
-        <p class="header-summary">
-          Review confirmed bookings and the append-only audit trail. Filters run on the server.
-        </p>
+  <div class="admin-app">
+    <header class="admin-topbar">
+      <div class="topbar-shell">
+        <a href="/" class="brand-link" aria-label="Lumina Cinema หน้าแรก"><BrandMark /></a>
+        <span class="admin-divider"></span>
+        <span class="admin-product">ADMIN</span>
+        <a class="back-link" href="/">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+          กลับไปหน้าจองบัตร
+        </a>
       </div>
-      <a class="back-link" href="/">Back to seat booking</a>
     </header>
 
-    <section class="admin-panel" aria-labelledby="bookings-title">
-      <div class="panel-heading">
+    <main class="admin-shell">
+      <header class="admin-hero">
         <div>
-          <p class="section-label">Bookings</p>
-          <h2 id="bookings-title">All booking records</h2>
+          <p class="section-label">ADMIN DASHBOARD</p>
+          <h1>จัดการรายการจอง</h1>
+          <p class="header-summary">
+            ตรวจสอบรายการจอง ค้นหาข้อมูลลูกค้า และติดตามเหตุการณ์สำคัญของระบบ
+          </p>
         </div>
-        <span class="record-count">{{ bookingMeta.total }} records</span>
-      </div>
+        <div class="live-chip"><i></i> พร้อมใช้งาน</div>
+      </header>
 
-      <form class="filter-form" @submit.prevent="store.applyBookingFilters">
-        <label>
-          Movie title
-          <input
-            v-model="bookingFilters.movie"
-            name="movie"
-            maxlength="120"
-            placeholder="Midnight Signal"
-          />
-        </label>
-        <label>
-          Status
-          <select v-model="bookingFilters.status" name="status">
-            <option value="">All statuses</option>
-            <option value="BOOKED">Booked</option>
-            <option value="HOLDING">Holding</option>
-            <option value="TIMED_OUT">Timed out</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
-        </label>
-        <div class="filter-actions">
-          <button type="submit" :disabled="isLoadingBookings">Apply filters</button>
+      <section class="metric-grid" aria-label="ภาพรวมระบบ">
+        <article class="metric-card metric-card--accent">
+          <span>รายการจองทั้งหมด</span>
+          <strong>{{ bookingMeta.total }}</strong>
+          <small>ทุกรายการในระบบ</small>
+        </article>
+        <article class="metric-card">
+          <span>สำเร็จในหน้านี้</span>
+          <strong>{{ bookedOnPage }}</strong>
+          <small>จากหน้าปัจจุบัน</small>
+        </article>
+        <article class="metric-card">
+          <span>เหตุการณ์ระบบ</span>
+          <strong>{{ auditMeta.total }}</strong>
+          <small>เหตุการณ์ที่บันทึกไว้</small>
+        </article>
+        <article class="metric-card">
+          <span>จองสำเร็จในหน้านี้</span>
+          <strong>{{ successEventsOnPage }}</strong>
+          <small>จากหน้าปัจจุบัน</small>
+        </article>
+      </section>
+
+      <section class="admin-panel" aria-labelledby="bookings-title">
+        <div class="panel-heading">
+          <div>
+            <p class="section-label">BOOKINGS</p>
+            <h2 id="bookings-title">รายการจองทั้งหมด</h2>
+          </div>
+          <span class="record-count">{{ bookingMeta.total }} รายการ</span>
+        </div>
+
+        <form class="filter-form" @submit.prevent="store.applyBookingFilters">
+          <label>
+            ชื่อภาพยนตร์
+            <span class="input-wrap">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-4-4" />
+              </svg>
+              <input
+                v-model="bookingFilters.movie"
+                name="movie"
+                maxlength="120"
+                placeholder="เช่น หลานม่า"
+              />
+            </span>
+          </label>
+          <label>
+            สถานะ
+            <select v-model="bookingFilters.status" name="status">
+              <option value="">ทุกสถานะ</option>
+              <option value="BOOKED">จองสำเร็จ</option>
+              <option value="HOLDING">กำลังล็อก</option>
+              <option value="TIMED_OUT">หมดเวลา</option>
+              <option value="CANCELLED">ยกเลิก</option>
+            </select>
+          </label>
+          <div class="filter-actions">
+            <button type="submit" :disabled="isLoadingBookings">ค้นหา</button>
+            <button
+              type="button"
+              class="secondary-button"
+              :disabled="isLoadingBookings"
+              @click="store.clearBookingFilters"
+            >
+              ล้างค่า
+            </button>
+          </div>
+        </form>
+
+        <div
+          v-if="isLoadingBookings"
+          class="loading-table"
+          role="status"
+          aria-label="Loading bookings"
+        >
+          <span v-for="index in 4" :key="index"></span>
+        </div>
+
+        <div v-else-if="bookingsError" class="inline-message inline-message--error" role="alert">
+          <strong>โหลดรายการจองไม่สำเร็จ</strong>
+          <p>{{ bookingsError }}</p>
+          <button type="button" @click="store.loadBookings">ลองอีกครั้ง</button>
+        </div>
+
+        <div v-else-if="bookings.length === 0" class="inline-message">
+          <strong>ไม่พบรายการที่ตรงกับตัวกรอง</strong>
+          <button type="button" @click="store.clearBookingFilters">แสดงทั้งหมด</button>
+        </div>
+
+        <div v-else class="table-scroll">
+          <table>
+            <caption class="sr-only">
+              Cinema bookings
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">ภาพยนตร์และรอบฉาย</th>
+                <th scope="col">ลูกค้า</th>
+                <th scope="col">ที่นั่ง</th>
+                <th scope="col">สถานะ</th>
+                <th scope="col">เวลาจอง</th>
+                <th scope="col">หมายเลขอ้างอิง</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="booking in bookings" :key="booking.id">
+                <td>
+                  <strong>{{ booking.screening.movie_title || 'ไม่ทราบชื่อเรื่อง' }}</strong>
+                  <span>
+                    {{ booking.screening.auditorium_name || 'ไม่ทราบโรง' }} ·
+                    {{ formatDate(booking.screening.starts_at) }}
+                  </span>
+                </td>
+                <td>
+                  <strong>{{ booking.user.name || 'ไม่ทราบชื่อ' }}</strong>
+                  <span>{{ booking.user.email || booking.user.id }}</span>
+                </td>
+                <td class="data-value seat-value">{{ booking.seat_id }}</td>
+                <td>
+                  <span
+                    class="status-badge"
+                    :class="`status-badge--${booking.status.toLowerCase()}`"
+                  >
+                    {{ statusLabel(booking.status) }}
+                  </span>
+                </td>
+                <td class="data-value">{{ formatDate(booking.created_at) }}</td>
+                <td class="reference data-value">{{ booking.id }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <nav v-if="bookingMeta.total_pages > 1" class="pagination" aria-label="Booking pages">
           <button
             type="button"
             class="secondary-button"
-            :disabled="isLoadingBookings"
-            @click="store.clearBookingFilters"
+            :disabled="bookingMeta.page <= 1 || isLoadingBookings"
+            @click="store.setBookingPage(bookingMeta.page - 1)"
           >
-            Clear
+            ก่อนหน้า
           </button>
+          <span class="data-value"
+            >หน้า {{ bookingMeta.page }} / {{ bookingMeta.total_pages }}</span
+          >
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="bookingMeta.page >= bookingMeta.total_pages || isLoadingBookings"
+            @click="store.setBookingPage(bookingMeta.page + 1)"
+          >
+            ถัดไป
+          </button>
+        </nav>
+      </section>
+
+      <section class="admin-panel" aria-labelledby="audit-title">
+        <div class="panel-heading">
+          <div>
+            <p class="section-label">AUDIT TRAIL</p>
+            <h2 id="audit-title">เหตุการณ์สำคัญของระบบ</h2>
+          </div>
+          <span class="record-count">{{ auditMeta.total }} เหตุการณ์</span>
         </div>
-      </form>
 
-      <div v-if="isLoadingBookings" class="loading-table" role="status" aria-label="Loading bookings">
-        <span v-for="index in 4" :key="index"></span>
-      </div>
+        <form class="filter-form audit-filter" @submit.prevent="store.applyAuditFilter">
+          <label>
+            ประเภทเหตุการณ์
+            <select v-model="auditFilters.event" name="event">
+              <option value="">ทุกเหตุการณ์</option>
+              <option value="BOOKING_SUCCESS">Booking success</option>
+              <option value="BOOKING_TIMEOUT">Booking timeout</option>
+              <option value="SEAT_RELEASED">Seat released</option>
+              <option value="SYSTEM_ERROR">System error</option>
+            </select>
+          </label>
+          <button type="submit" :disabled="isLoadingAudits">ใช้ตัวกรอง</button>
+        </form>
 
-      <div v-else-if="bookingsError" class="inline-error" role="alert">
-        <p>{{ bookingsError }}</p>
-        <button type="button" @click="store.loadBookings">Try again</button>
-      </div>
-
-      <div v-else-if="bookings.length === 0" class="empty-state">
-        <p>No bookings match these filters.</p>
-        <button type="button" @click="store.clearBookingFilters">Clear filters</button>
-      </div>
-
-      <div v-else class="table-scroll">
-        <table>
-          <caption class="sr-only">
-            Cinema bookings
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Movie and showtime</th>
-              <th scope="col">Customer</th>
-              <th scope="col">Seat</th>
-              <th scope="col">Status</th>
-              <th scope="col">Booked at</th>
-              <th scope="col">Reference</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="booking in bookings" :key="booking.id">
-              <td>
-                <strong>{{ booking.screening.movie_title || 'Unknown movie' }}</strong>
-                <span>
-                  {{ booking.screening.auditorium_name || 'Unknown hall' }} ·
-                  {{ formatDate(booking.screening.starts_at) }}
-                </span>
-              </td>
-              <td>
-                <strong>{{ booking.user.name || 'Unknown user' }}</strong>
-                <span>{{ booking.user.email || booking.user.id }}</span>
-              </td>
-              <td class="data-value">{{ booking.seat_id }}</td>
-              <td><span class="status-badge">{{ booking.status }}</span></td>
-              <td class="data-value">{{ formatDate(booking.created_at) }}</td>
-              <td class="reference data-value">{{ booking.id }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <nav v-if="bookingMeta.total_pages > 1" class="pagination" aria-label="Booking pages">
-        <button
-          type="button"
-          class="secondary-button"
-          :disabled="bookingMeta.page <= 1 || isLoadingBookings"
-          @click="store.setBookingPage(bookingMeta.page - 1)"
+        <div
+          v-if="isLoadingAudits"
+          class="loading-table"
+          role="status"
+          aria-label="Loading audit logs"
         >
-          Previous
-        </button>
-        <span class="data-value">Page {{ bookingMeta.page }} of {{ bookingMeta.total_pages }}</span>
-        <button
-          type="button"
-          class="secondary-button"
-          :disabled="bookingMeta.page >= bookingMeta.total_pages || isLoadingBookings"
-          @click="store.setBookingPage(bookingMeta.page + 1)"
-        >
-          Next
-        </button>
-      </nav>
-    </section>
-
-    <section class="admin-panel" aria-labelledby="audit-title">
-      <div class="panel-heading">
-        <div>
-          <p class="section-label">Audit trail</p>
-          <h2 id="audit-title">Important system events</h2>
+          <span v-for="index in 3" :key="index"></span>
         </div>
-        <span class="record-count">{{ auditMeta.total }} events</span>
-      </div>
 
-      <form class="filter-form audit-filter" @submit.prevent="store.applyAuditFilter">
-        <label>
-          Event type
-          <select v-model="auditFilters.event" name="event">
-            <option value="">All events</option>
-            <option value="BOOKING_SUCCESS">Booking success</option>
-            <option value="BOOKING_TIMEOUT">Booking timeout</option>
-            <option value="SEAT_RELEASED">Seat released</option>
-            <option value="SYSTEM_ERROR">System error</option>
-          </select>
-        </label>
-        <button type="submit" :disabled="isLoadingAudits">Apply filter</button>
-      </form>
+        <div v-else-if="auditsError" class="inline-message inline-message--error" role="alert">
+          <strong>โหลด audit log ไม่สำเร็จ</strong>
+          <p>{{ auditsError }}</p>
+          <button type="button" @click="store.loadAuditLogs">ลองอีกครั้ง</button>
+        </div>
 
-      <div v-if="isLoadingAudits" class="loading-table" role="status" aria-label="Loading audit logs">
-        <span v-for="index in 3" :key="index"></span>
-      </div>
+        <div v-else-if="auditLogs.length === 0" class="inline-message">
+          <strong>ไม่พบเหตุการณ์ที่ตรงกับตัวกรอง</strong>
+          <button type="button" @click="store.clearAuditFilter">แสดงทุกเหตุการณ์</button>
+        </div>
 
-      <div v-else-if="auditsError" class="inline-error" role="alert">
-        <p>{{ auditsError }}</p>
-        <button type="button" @click="store.loadAuditLogs">Try again</button>
-      </div>
+        <div v-else class="table-scroll">
+          <table>
+            <caption class="sr-only">
+              System audit events
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">เหตุการณ์</th>
+                <th scope="col">รายละเอียด</th>
+                <th scope="col">เวลา</th>
+                <th scope="col">Event ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="entry in auditLogs" :key="entry.id">
+                <td>
+                  <span class="event-badge">{{ entry.event }}</span>
+                </td>
+                <td>
+                  <strong v-if="entry.seat_id">Seat {{ entry.seat_id }}</strong>
+                  <span v-if="entry.booking_id">Booking {{ entry.booking_id }}</span>
+                  <span v-else-if="entry.screening_id">Screening {{ entry.screening_id }}</span>
+                  <span v-if="entry.message">{{ entry.message }}</span>
+                </td>
+                <td class="data-value">{{ formatDate(entry.created_at) }}</td>
+                <td class="reference data-value">{{ entry.id }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-      <div v-else-if="auditLogs.length === 0" class="empty-state">
-        <p>No audit events match this filter.</p>
-        <button type="button" @click="store.clearAuditFilter">
-          Show all events
-        </button>
-      </div>
-
-      <div v-else class="table-scroll">
-        <table>
-          <caption class="sr-only">
-            System audit events
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Event</th>
-              <th scope="col">Context</th>
-              <th scope="col">Time</th>
-              <th scope="col">Event ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="entry in auditLogs" :key="entry.id">
-              <td><span class="status-badge">{{ entry.event }}</span></td>
-              <td>
-                <strong v-if="entry.seat_id">Seat {{ entry.seat_id }}</strong>
-                <span v-if="entry.booking_id">Booking {{ entry.booking_id }}</span>
-                <span v-else-if="entry.screening_id">Screening {{ entry.screening_id }}</span>
-                <span v-if="entry.message">{{ entry.message }}</span>
-              </td>
-              <td class="data-value">{{ formatDate(entry.created_at) }}</td>
-              <td class="reference data-value">{{ entry.id }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <nav v-if="auditMeta.total_pages > 1" class="pagination" aria-label="Audit log pages">
-        <button
-          type="button"
-          class="secondary-button"
-          :disabled="auditMeta.page <= 1 || isLoadingAudits"
-          @click="store.setAuditPage(auditMeta.page - 1)"
-        >
-          Previous
-        </button>
-        <span class="data-value">Page {{ auditMeta.page }} of {{ auditMeta.total_pages }}</span>
-        <button
-          type="button"
-          class="secondary-button"
-          :disabled="auditMeta.page >= auditMeta.total_pages || isLoadingAudits"
-          @click="store.setAuditPage(auditMeta.page + 1)"
-        >
-          Next
-        </button>
-      </nav>
-    </section>
-  </main>
+        <nav v-if="auditMeta.total_pages > 1" class="pagination" aria-label="Audit log pages">
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="auditMeta.page <= 1 || isLoadingAudits"
+            @click="store.setAuditPage(auditMeta.page - 1)"
+          >
+            ก่อนหน้า
+          </button>
+          <span class="data-value">หน้า {{ auditMeta.page }} / {{ auditMeta.total_pages }}</span>
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="auditMeta.page >= auditMeta.total_pages || isLoadingAudits"
+            @click="store.setAuditPage(auditMeta.page + 1)"
+          >
+            ถัดไป
+          </button>
+        </nav>
+      </section>
+    </main>
+  </div>
 </template>
 
 <style scoped>
-.admin-shell {
-  width: min(90rem, 100%);
+.admin-app {
   min-height: 100vh;
-  margin: 0 auto;
-  padding: 3rem 2rem 4rem;
+  color: #e8ecf2;
+  background: radial-gradient(circle at 85% 8%, rgb(56 105 151 / 12%), transparent 28rem), #070b12;
 }
 
-.admin-header,
+.admin-topbar {
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  background: rgb(5 9 15 / 92%);
+  backdrop-filter: blur(1rem);
+}
+
+.topbar-shell,
+.admin-shell {
+  width: min(90rem, calc(100% - 3rem));
+  margin: 0 auto;
+}
+
+.topbar-shell {
+  display: flex;
+  min-height: 5rem;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand-link {
+  text-decoration: none;
+}
+
+.admin-divider {
+  width: 1px;
+  height: 1.8rem;
+  margin-left: 0.4rem;
+  background: rgb(255 255 255 / 12%);
+}
+
+.admin-product {
+  color: #687485;
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+  color: #aab2bf;
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.back-link svg {
+  width: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.admin-shell {
+  padding-block: 4.5rem 6rem;
+}
+
+.admin-hero,
 .panel-heading,
 .pagination {
   display: flex;
@@ -266,73 +409,133 @@ onMounted(store.loadAll)
   align-items: center;
 }
 
-.admin-header {
-  align-items: end;
-  margin-bottom: 2rem;
-}
-
 .section-label {
   margin: 0 0 0.55rem;
-  color: #fbbf24;
-  font-size: 0.76rem;
-  font-weight: 800;
+  color: #ffb84d;
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.17em;
   text-transform: uppercase;
 }
 
 h1,
 h2 {
   margin: 0;
-  color: #fafafa;
+  color: #fffaf0;
+  font-family: 'Arial Narrow', 'Roboto Condensed', sans-serif;
   text-wrap: balance;
 }
 
 h1 {
-  font-size: clamp(2.25rem, 5vw, 4rem);
-  line-height: 1;
+  font-size: clamp(2.7rem, 6vw, 5.4rem);
+  line-height: 0.95;
+  letter-spacing: -0.06em;
 }
 
 h2 {
-  font-size: 1.35rem;
+  font-size: 1.55rem;
+  letter-spacing: -0.025em;
 }
 
 .header-summary {
-  max-width: 44rem;
+  max-width: 47rem;
   margin: 1rem 0 0;
-  color: #a1a1aa;
-  line-height: 1.65;
+  color: #8b95a4;
+  font-size: 0.84rem;
+  line-height: 1.7;
   text-wrap: pretty;
 }
 
-.back-link {
+.live-chip {
+  display: inline-flex;
   flex: 0 0 auto;
-  color: #fbbf24;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgb(66 190 145 / 20%);
+  border-radius: 999px;
+  color: #90cbb5;
+  background: rgb(36 110 83 / 8%);
+  font-size: 0.67rem;
+  font-weight: 750;
+}
+
+.live-chip i {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #42be91;
+  box-shadow: 0 0 0 0.28rem rgb(66 190 145 / 10%);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.8rem;
+  margin-top: 2.5rem;
+}
+
+.metric-card {
+  display: grid;
+  min-height: 9.5rem;
+  padding: 1.2rem;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.75rem;
+  background: #0c131e;
+}
+
+.metric-card--accent {
+  border-color: rgb(255 184 77 / 25%);
+  background: radial-gradient(circle at 85% 15%, rgb(255 168 67 / 14%), transparent 45%), #0e151f;
+}
+
+.metric-card span {
+  color: #8994a4;
+  font-size: 0.7rem;
   font-weight: 700;
 }
 
+.metric-card strong {
+  margin-top: auto;
+  color: #f8f5ed;
+  font-size: 2.2rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.metric-card small {
+  margin-top: 0.45rem;
+  color: #505b6a;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
 .admin-panel {
-  margin-top: 1.25rem;
+  margin-top: 1rem;
   padding: 1.5rem;
-  border: 1px solid #27272a;
-  border-radius: 1rem;
-  background: #111113;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.85rem;
+  background: #0b111b;
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 12%);
 }
 
 .record-count {
-  color: #a1a1aa;
-  font-size: 0.82rem;
+  color: #707b8b;
+  font-size: 0.71rem;
   font-variant-numeric: tabular-nums;
 }
 
 .filter-form {
   display: grid;
-  grid-template-columns: minmax(14rem, 1fr) minmax(11rem, 0.45fr) auto;
-  gap: 1rem;
+  grid-template-columns: minmax(14rem, 1fr) minmax(11rem, 0.35fr) auto;
+  gap: 0.8rem;
   align-items: end;
   margin: 1.5rem 0;
   padding: 1rem;
-  border: 1px solid #27272a;
-  border-radius: 0.75rem;
-  background: #18181b;
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 0.65rem;
+  background: #0e1622;
 }
 
 .filter-form.audit-filter {
@@ -343,47 +546,74 @@ h2 {
 label {
   display: grid;
   gap: 0.45rem;
-  color: #d4d4d8;
-  font-size: 0.82rem;
-  font-weight: 700;
+  color: #9ba5b4;
+  font-size: 0.67rem;
+  font-weight: 750;
+}
+
+.input-wrap {
+  position: relative;
+  display: block;
+}
+
+.input-wrap svg {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  width: 0.95rem;
+  fill: none;
+  stroke: #5d6877;
+  stroke-linecap: round;
+  stroke-width: 1.7;
+  transform: translateY(-50%);
 }
 
 input,
 select {
   width: 100%;
   min-height: 2.65rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #52525b;
-  border-radius: 0.5rem;
-  color: #fafafa;
-  background: #09090b;
+  padding: 0.62rem 0.75rem;
+  border: 1px solid #2a3544;
+  border-radius: 0.45rem;
+  color: #eef1f5;
+  background: #080e17;
+  font-size: 0.72rem;
+}
+
+.input-wrap input {
+  padding-left: 2.25rem;
+}
+
+input::placeholder {
+  color: #4f5a69;
 }
 
 .filter-actions {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.55rem;
 }
 
 button {
   min-height: 2.65rem;
-  padding: 0.65rem 0.9rem;
-  border: 1px solid #fbbf24;
-  border-radius: 0.5rem;
-  color: #18181b;
-  background: #fbbf24;
-  font-weight: 750;
+  padding: 0.62rem 0.9rem;
+  border: 1px solid #ffb84d;
+  border-radius: 0.45rem;
+  color: #251300;
+  background: #ffb84d;
+  font-size: 0.71rem;
+  font-weight: 800;
   cursor: pointer;
 }
 
 button.secondary-button {
-  border-color: #52525b;
-  color: #e4e4e7;
+  border-color: #313d4c;
+  color: #c7ced8;
   background: transparent;
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .table-scroll {
@@ -392,27 +622,36 @@ button:disabled {
 
 table {
   width: 100%;
-  min-width: 54rem;
+  min-width: 56rem;
   border-collapse: collapse;
 }
 
 th,
 td {
-  padding: 0.85rem 0.75rem;
-  border-bottom: 1px solid #27272a;
+  padding: 0.9rem 0.75rem;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
   text-align: left;
   vertical-align: top;
 }
 
 th {
-  color: #a1a1aa;
-  font-size: 0.75rem;
-  font-weight: 750;
+  color: #667182;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 td {
-  color: #d4d4d8;
-  font-size: 0.83rem;
+  color: #bfc6d0;
+  font-size: 0.72rem;
+}
+
+tbody tr {
+  transition: background 130ms ease;
+}
+
+tbody tr:hover {
+  background: rgb(255 255 255 / 2.5%);
 }
 
 td strong,
@@ -421,23 +660,55 @@ td span {
 }
 
 td strong {
-  color: #fafafa;
+  color: #edf0f5;
 }
 
-td span:not(.status-badge) {
+td span:not(.status-badge, .event-badge) {
   margin-top: 0.25rem;
-  color: #a1a1aa;
+  color: #758092;
 }
 
-.status-badge {
+.status-badge,
+.event-badge {
   display: inline-block;
   width: max-content;
-  padding: 0.25rem 0.45rem;
-  border: 1px solid #52525b;
+  padding: 0.28rem 0.48rem;
+  border: 1px solid #334051;
+  border-radius: 999px;
+  color: #aeb8c5;
+  background: rgb(255 255 255 / 2%);
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.status-badge--booked {
+  border-color: rgb(66 190 145 / 24%);
+  color: #77d3b1;
+  background: rgb(66 190 145 / 7%);
+}
+
+.status-badge--holding {
+  border-color: rgb(255 184 77 / 25%);
+  color: #ffc76e;
+  background: rgb(255 184 77 / 7%);
+}
+
+.status-badge--timed_out,
+.status-badge--cancelled {
+  border-color: rgb(239 112 112 / 22%);
+  color: #ec9898;
+  background: rgb(239 112 112 / 6%);
+}
+
+.event-badge {
   border-radius: 0.35rem;
-  color: #fde68a;
-  font-size: 0.72rem;
-  font-weight: 750;
+  color: #c7a7e5;
+  background: rgb(151 94 207 / 6%);
+}
+
+.seat-value {
+  color: #ffbf60;
+  font-weight: 850;
 }
 
 .data-value {
@@ -447,7 +718,7 @@ td span:not(.status-badge) {
 .reference {
   max-width: 12rem;
   overflow-wrap: anywhere;
-  color: #a1a1aa;
+  color: #687485;
 }
 
 .pagination {
@@ -456,8 +727,8 @@ td span:not(.status-badge) {
 }
 
 .pagination span {
-  color: #a1a1aa;
-  font-size: 0.82rem;
+  color: #737e8e;
+  font-size: 0.68rem;
 }
 
 .loading-table {
@@ -470,54 +741,104 @@ td span:not(.status-badge) {
 .loading-table span {
   display: block;
   height: 2.8rem;
-  border-radius: 0.45rem;
-  background: #27272a;
+  border-radius: 0.4rem;
+  background: linear-gradient(110deg, #111a27 20%, #182332 42%, #111a27 65%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s linear infinite;
 }
 
-.inline-error,
-.empty-state {
+.inline-message {
   display: grid;
   min-height: 12rem;
   place-content: center;
   justify-items: center;
+  color: #8d98a8;
   text-align: center;
 }
 
-.inline-error {
-  color: #fecaca;
+.inline-message strong {
+  color: #d8dde5;
 }
 
-.empty-state {
-  color: #a1a1aa;
+.inline-message p {
+  margin: 0.5rem 0 0;
 }
 
-.inline-error p,
-.empty-state p {
-  margin: 0 0 0.9rem;
-  text-wrap: pretty;
+.inline-message button {
+  margin-top: 0.85rem;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.inline-message--error strong,
+.inline-message--error p {
+  color: #eda3a3;
 }
 
-@media (max-width: 760px) {
-  .admin-shell {
-    padding: 2rem 1rem 3rem;
+@keyframes shimmer {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+@media (max-width: 900px) {
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
-  .admin-header,
-  .panel-heading {
-    align-items: flex-start;
+  .filter-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filter-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar-shell,
+  .admin-shell {
+    width: min(100% - 2rem, 90rem);
+  }
+
+  .admin-divider,
+  .admin-product {
+    display: none;
+  }
+
+  .back-link {
+    font-size: 0;
+  }
+
+  .back-link svg {
+    width: 1.2rem;
+  }
+
+  .admin-shell {
+    padding-block: 3rem 4rem;
+  }
+
+  .admin-hero {
+    align-items: start;
     flex-direction: column;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .metric-card {
+    min-height: 8.5rem;
+  }
+
+  .admin-panel {
+    padding: 1rem;
+  }
+
+  .panel-heading {
+    align-items: start;
+  }
+
+  .record-count {
+    text-align: right;
   }
 
   .filter-form,
@@ -525,9 +846,255 @@ td span:not(.status-badge) {
     grid-template-columns: 1fr;
   }
 
-  .filter-actions,
-  .filter-actions button {
-    width: 100%;
+  .filter-actions {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-table span {
+    animation: none;
+  }
+
+  tbody tr {
+    transition: none;
+  }
+}
+</style>
+<style scoped>
+.admin-app {
+  color: #29292d;
+  background: #f4f4f5;
+}
+
+.admin-topbar {
+  border-bottom: 1px solid #29292e;
+  background: #111113;
+  backdrop-filter: none;
+}
+
+.topbar-shell,
+.admin-shell {
+  width: min(78rem, calc(100% - 3rem));
+}
+
+.topbar-shell {
+  min-height: 4.5rem;
+}
+
+.admin-product {
+  color: #9c9ca3;
+}
+
+.back-link {
+  color: #d0d0d4;
+}
+
+.admin-shell {
+  padding-block: 3.5rem 5rem;
+}
+
+.section-label {
+  color: #d91920;
+  letter-spacing: 0.1em;
+}
+
+h1,
+h2 {
+  color: #222226;
+  font-family: inherit;
+  letter-spacing: normal;
+}
+
+h1 {
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.15;
+}
+
+h2 {
+  font-size: 1.45rem;
+}
+
+.header-summary {
+  max-width: 40rem;
+  margin-top: 0.7rem;
+  color: #6e6e75;
+}
+
+.live-chip {
+  border-color: #bddfca;
+  border-radius: 0.25rem;
+  color: #28704a;
+  background: #ecf8f0;
+}
+
+.live-chip i {
+  box-shadow: none;
+}
+
+.metric-grid {
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.metric-card,
+.metric-card--accent {
+  min-height: 8.2rem;
+  padding: 1rem;
+  border: 1px solid #dcdce0;
+  border-radius: 0.25rem;
+  background: #fff;
+}
+
+.metric-card--accent {
+  border-top: 3px solid #d91920;
+}
+
+.metric-card span {
+  color: #6d6d74;
+}
+
+.metric-card strong {
+  color: #242428;
+  font-size: 2rem;
+}
+
+.metric-card small {
+  color: #96969d;
+  letter-spacing: 0;
+}
+
+.admin-panel {
+  margin-top: 1rem;
+  padding: 1.4rem;
+  border: 1px solid #dcdce0;
+  border-radius: 0.25rem;
+  background: #fff;
+  box-shadow: none;
+}
+
+.record-count {
+  color: #77777e;
+}
+
+.filter-form {
+  border: 1px solid #e0e0e3;
+  border-radius: 0.25rem;
+  background: #f7f7f8;
+}
+
+label {
+  color: #5f5f66;
+}
+
+input,
+select {
+  border-color: #cfcfd3;
+  border-radius: 0.25rem;
+  color: #29292d;
+  background: #fff;
+  color-scheme: light;
+}
+
+input::placeholder {
+  color: #9999a0;
+}
+
+button {
+  border-color: #d91920;
+  border-radius: 0.25rem;
+  color: #fff;
+  background: #d91920;
+}
+
+button.secondary-button {
+  border-color: #c8c8cc;
+  color: #3b3b40;
+  background: #fff;
+}
+
+th,
+td {
+  border-bottom-color: #e7e7e9;
+}
+
+th {
+  color: #74747b;
+  background: #fafafa;
+}
+
+td {
+  color: #55555c;
+}
+
+tbody tr:hover {
+  background: #fafafa;
+}
+
+td strong {
+  color: #28282c;
+}
+
+td span:not(.status-badge, .event-badge) {
+  color: #85858c;
+}
+
+.status-badge,
+.event-badge {
+  border-radius: 0.2rem;
+  color: #55555c;
+  background: #f4f4f5;
+}
+
+.status-badge--booked {
+  border-color: #b9dfc8;
+  color: #28704a;
+  background: #ecf8f0;
+}
+
+.status-badge--holding {
+  border-color: #ead6aa;
+  color: #8a651b;
+  background: #fff8e8;
+}
+
+.status-badge--timed_out,
+.status-badge--cancelled {
+  border-color: #efc4c6;
+  color: #a31e24;
+  background: #fff0f0;
+}
+
+.event-badge {
+  color: #55438a;
+  background: #f2effb;
+}
+
+.seat-value {
+  color: #d91920;
+}
+
+.reference,
+.pagination span {
+  color: #7d7d84;
+}
+
+.loading-table span {
+  background: #ededee;
+}
+
+.inline-message {
+  color: #77777e;
+}
+
+.inline-message strong {
+  color: #343439;
+}
+
+@media (max-width: 620px) {
+  .topbar-shell,
+  .admin-shell {
+    width: min(100% - 1.25rem, 78rem);
   }
 }
 </style>

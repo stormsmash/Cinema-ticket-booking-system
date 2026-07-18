@@ -6,25 +6,25 @@ import { fetchHealth } from '@/features/system/api'
 type CheckState = 'checking' | 'online' | 'offline'
 
 const state = ref<CheckState>('checking')
-const detail = ref('Contacting the booking API...')
+const detail = ref('กำลังเชื่อมต่อ API...')
 
 const label = computed(() => {
-  if (state.value === 'online') return 'Backend connected'
-  if (state.value === 'offline') return 'Backend unavailable'
-  return 'Checking backend'
+  if (state.value === 'online') return 'Backend เชื่อมต่อแล้ว'
+  if (state.value === 'offline') return 'Backend ไม่พร้อมใช้งาน'
+  return 'กำลังตรวจสอบ Backend'
 })
 
 async function checkHealth() {
   state.value = 'checking'
-  detail.value = 'Contacting the booking API...'
+  detail.value = 'กำลังเชื่อมต่อ API...'
 
   try {
     await fetchHealth()
     state.value = 'online'
-    detail.value = 'The Vue frontend can reach the Go API.'
+    detail.value = 'Frontend เชื่อมต่อกับ Go API ได้ตามปกติ'
   } catch {
     state.value = 'offline'
-    detail.value = 'Start the API, then try the connection again.'
+    detail.value = 'กรุณาเปิด API แล้วลองตรวจสอบอีกครั้ง'
   }
 }
 
@@ -36,7 +36,7 @@ onMounted(checkHealth)
     <div class="status-heading">
       <span class="status-dot" :class="`status-dot--${state}`" aria-hidden="true"></span>
       <div>
-        <p>System status</p>
+        <p>สถานะระบบ</p>
         <strong>{{ label }}</strong>
       </div>
     </div>
@@ -44,18 +44,17 @@ onMounted(checkHealth)
     <p class="status-detail">{{ detail }}</p>
 
     <button type="button" :disabled="state === 'checking'" @click="checkHealth">
-      {{ state === 'checking' ? 'Checking…' : 'Check again' }}
+      {{ state === 'checking' ? 'กำลังตรวจสอบ…' : 'ตรวจสอบอีกครั้ง' }}
     </button>
   </section>
 </template>
 
 <style scoped>
 .status-card {
-  padding: 1.25rem;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 1rem;
-  background: rgb(24 24 27 / 78%);
-  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 28%);
+  padding: 1rem;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.25rem;
+  background: #090f18;
 }
 
 .status-heading {
@@ -67,13 +66,15 @@ onMounted(checkHealth)
 .status-heading p,
 .status-detail {
   margin: 0;
-  color: #a1a1aa;
+  color: #6f7a8b;
+  font-size: 0.66rem;
 }
 
 .status-heading strong {
   display: block;
   margin-top: 0.2rem;
-  font-size: 1.05rem;
+  color: #dce1e8;
+  font-size: 0.78rem;
 }
 
 .status-dot {
@@ -95,18 +96,19 @@ onMounted(checkHealth)
 }
 
 .status-detail {
-  margin-top: 1rem;
+  margin-top: 0.7rem;
   line-height: 1.6;
 }
 
 button {
-  margin-top: 1rem;
-  padding: 0.65rem 0.9rem;
-  border: 0;
-  border-radius: 0.65rem;
-  color: #18181b;
-  background: #fbbf24;
-  font-weight: 700;
+  margin-top: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #303b4a;
+  border-radius: 0.4rem;
+  color: #b9c1cd;
+  background: transparent;
+  font-size: 0.65rem;
+  font-weight: 750;
   cursor: pointer;
 }
 

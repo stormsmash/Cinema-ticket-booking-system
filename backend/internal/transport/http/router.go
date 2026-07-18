@@ -87,6 +87,11 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 		auth.requireAuthentication(),
 		bookings.confirm,
 	)
+	api.GET(
+		"/bookings/me",
+		auth.requireAuthentication(),
+		bookings.listMine,
+	)
 
 	return router
 }

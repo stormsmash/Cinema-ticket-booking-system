@@ -10,10 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/booking"
+	"github.com/stormsmash/Cinema-ticket-booking-system/backend/internal/domain"
 )
 
 type BookingService interface {
 	Confirm(context.Context, string, string, string) (booking.Confirmation, error)
+	ListForUser(context.Context, string) ([]booking.UserTicket, error)
 }
 
 type bookingHandler struct {
@@ -29,8 +31,23 @@ type bookingResponse struct {
 	ID          string    `json:"id"`
 	ScreeningID string    `json:"screening_id"`
 	SeatID      string    `json:"seat_id"`
+	PriceBaht   int       `json:"price_baht"`
+	TicketCode  string    `json:"ticket_code"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+type userTicketResponse struct {
+	ID             string    `json:"id"`
+	ScreeningID    string    `json:"screening_id"`
+	MovieTitle     string    `json:"movie_title"`
+	AuditoriumName string    `json:"auditorium_name"`
+	StartsAt       time.Time `json:"starts_at"`
+	SeatID         string    `json:"seat_id"`
+	PriceBaht      int       `json:"price_baht"`
+	TicketCode     string    `json:"ticket_code"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 func newBookingHandler(service BookingService) *bookingHandler {
@@ -66,10 +83,49 @@ func (handler *bookingHandler) confirm(c *gin.Context) {
 			ID:          item.ID.Hex(),
 			ScreeningID: item.ScreeningID.Hex(),
 			SeatID:      item.SeatID,
+			PriceBaht:   item.PriceBaht,
+			TicketCode:  ticketCode(item),
 			Status:      string(item.Status),
 			CreatedAt:   item.CreatedAt,
 		},
 	})
+}
+
+func (handler *bookingHandler) listMine(c *gin.Context) {
+	user := authenticatedUser(c)
+	tickets, err := handler.service.ListForUser(c.Request.Context(), user.ID.Hex())
+	if err != nil {
+		log.Printf("list user tickets: %v", err)
+		writeError(c, http.StatusInternalServerError, "TICKETS_FAILED", "Unable to load tickets")
+		return
+	}
+
+	data := make([]userTicketResponse, 0, len(tickets))
+	for _, ticket := range tickets {
+		item := ticket.Booking
+		price := item.PriceBaht
+		if price == 0 {
+			price = ticket.Screening.TicketPriceBaht
+		}
+		data = append(data, userTicketResponse{
+			ID:             item.ID.Hex(),
+			ScreeningID:    item.ScreeningID.Hex(),
+			MovieTitle:     ticket.Screening.Movie.Title,
+			AuditoriumName: ticket.Screening.Auditorium.Name,
+			StartsAt:       ticket.Screening.StartsAt,
+			SeatID:         item.SeatID,
+			PriceBaht:      price,
+			TicketCode:     ticketCode(item),
+			Status:         string(item.Status),
+			CreatedAt:      item.CreatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": data})
+}
+
+func ticketCode(item domain.Booking) string {
+	return "LUMINA-" + item.ID.Hex()
 }
 
 func (handler *bookingHandler) writeServiceError(c *gin.Context, err error) {

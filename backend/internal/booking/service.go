@@ -34,6 +34,7 @@ var (
 type Repository interface {
 	FindBooked(context.Context, bson.ObjectID, string) (domain.Booking, error)
 	CreateBooked(context.Context, domain.Booking) error
+	ListBookedByUser(context.Context, string) ([]domain.Booking, error)
 }
 
 type ScreeningFinder interface {
@@ -53,6 +54,11 @@ type EventPublisher interface {
 type Confirmation struct {
 	Booking domain.Booking
 	Created bool
+}
+
+type UserTicket struct {
+	Booking   domain.Booking
+	Screening domain.Screening
 }
 
 type Service struct {
@@ -132,6 +138,7 @@ func (service *Service) Confirm(
 		UserID:      userID,
 		ScreeningID: item.ID,
 		SeatID:      seat.ID,
+		PriceBaht:   item.TicketPriceBaht,
 		Status:      domain.BookingStatusBooked,
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -158,6 +165,27 @@ func (service *Service) Confirm(
 	service.publishBooked(created)
 
 	return Confirmation{Booking: created, Created: true}, nil
+}
+
+func (service *Service) ListForUser(ctx context.Context, userID string) ([]UserTicket, error) {
+	operationContext, cancel := context.WithTimeout(ctx, bookingOperationTimeout)
+	defer cancel()
+
+	bookings, err := service.repository.ListBookedByUser(operationContext, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user bookings: %w", err)
+	}
+
+	tickets := make([]UserTicket, 0, len(bookings))
+	for _, item := range bookings {
+		screeningItem, err := service.screenings.FindByID(operationContext, item.ScreeningID)
+		if err != nil {
+			return nil, fmt.Errorf("find ticket screening: %w", err)
+		}
+		tickets = append(tickets, UserTicket{Booking: item, Screening: screeningItem})
+	}
+
+	return tickets, nil
 }
 
 func (service *Service) findBookedAfterFailure(

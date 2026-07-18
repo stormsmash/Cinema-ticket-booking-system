@@ -6,6 +6,7 @@ import { subscribeToSeatEvents } from '@/features/screenings/realtime'
 import { useScreeningStore } from '@/features/screenings/store'
 import type {
   Booking,
+  MyTicket,
   ScreeningSummary,
   SeatEvent,
   SeatLock,
@@ -17,6 +18,7 @@ vi.mock('@/features/screenings/api', () => ({
   confirmSeatBooking: vi.fn<(screeningID: string, seatID: string) => Promise<Booking>>(),
   fetchScreenings: vi.fn<() => Promise<ScreeningSummary[]>>(),
   fetchSeatMap: vi.fn<(screeningID: string) => Promise<SeatMap>>(),
+  fetchMyTickets: vi.fn<() => Promise<MyTicket[]>>().mockResolvedValue([]),
   releaseSeatLock: vi.fn<(screeningID: string, seatID: string) => Promise<void>>(),
   ScreeningApiError: class ScreeningApiError extends Error {},
 }))
@@ -37,6 +39,7 @@ const availableMap: SeatMap = {
   movie: { title: 'Midnight Signal', duration_minutes: 112 },
   auditorium: { name: 'Hall 1', rows: 1, seats_per_row: 1 },
   starts_at: '2026-07-15T12:00:00Z',
+  ticket_price_baht: 240,
   seats: [{ id: 'A1', row: 'A', number: 1, status: 'AVAILABLE', locked_by_me: false }],
 }
 
@@ -118,6 +121,8 @@ describe('screening store realtime updates', () => {
       id: 'booking-123',
       screening_id: 'screening-1',
       seat_id: 'A1',
+      price_baht: 240,
+      ticket_code: 'LUMINA-booking-123',
       status: 'BOOKED',
       created_at: '2026-07-15T12:00:00Z',
     }
@@ -131,8 +136,8 @@ describe('screening store realtime updates', () => {
     await store.confirmBooking()
 
     expect(confirmSeatBooking).toHaveBeenCalledWith('screening-1', 'A1')
-    expect(store.confirmedBooking?.id).toBe('booking-123')
-    expect(store.activeLock).toBeNull()
+    expect(store.confirmedBookings[0]?.id).toBe('booking-123')
+    expect(store.activeLocks).toHaveLength(0)
     expect(store.seatMap?.seats[0]?.status).toBe('BOOKED')
   })
 })

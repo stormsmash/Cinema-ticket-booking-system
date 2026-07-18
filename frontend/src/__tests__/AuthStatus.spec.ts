@@ -25,7 +25,7 @@ describe('AuthStatus', () => {
     await flushPromises()
 
     expect(wrapper.get('a').attributes('href')).toBe('/api/v1/auth/google')
-    expect(wrapper.text()).toContain('Continue with Google')
+    expect(wrapper.text()).toContain('เข้าสู่ระบบด้วย Google')
   })
 
   it('shows the current user from the session', async () => {
@@ -53,7 +53,7 @@ describe('AuthStatus', () => {
 
     expect(wrapper.text()).toContain('Cinema Viewer')
     expect(wrapper.text()).toContain('viewer@example.com')
-    expect(wrapper.text()).toContain('Sign out')
+    expect(wrapper.text()).toContain('ออกจากระบบ')
   })
 
   it('shows the dashboard link only to an admin', async () => {
@@ -81,7 +81,7 @@ describe('AuthStatus', () => {
 
     const link = wrapper.get('a.admin-link')
     expect(link.attributes('href')).toBe('/admin')
-    expect(link.text()).toBe('Admin dashboard')
+    expect(link.text()).toBe('หน้าจัดการระบบ')
   })
 })
 

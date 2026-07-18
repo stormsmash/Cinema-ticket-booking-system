@@ -21,6 +21,16 @@ type bookingServiceStub struct {
 	confirmation booking.Confirmation
 	err          error
 	userID       string
+	tickets      []booking.UserTicket
+	listError    error
+}
+
+func (stub *bookingServiceStub) ListForUser(
+	_ context.Context,
+	userID string,
+) ([]booking.UserTicket, error) {
+	stub.userID = userID
+	return stub.tickets, stub.listError
 }
 
 func (stub *bookingServiceStub) Confirm(
@@ -115,5 +125,42 @@ func TestConfirmBookingMapsExpiredLock(t *testing.T) {
 	if recorder.Code != http.StatusConflict ||
 		!strings.Contains(recorder.Body.String(), "SEAT_LOCK_EXPIRED") {
 		t.Fatalf("unexpected response: status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestListMyTicketsUsesAuthenticatedUser(t *testing.T) {
+	user := domain.User{ID: bson.NewObjectID()}
+	bookingID := bson.NewObjectID()
+	screeningID := bson.NewObjectID()
+	service := &bookingServiceStub{tickets: []booking.UserTicket{{
+		Booking: domain.Booking{
+			ID:          bookingID,
+			ScreeningID: screeningID,
+			SeatID:      "C5",
+			PriceBaht:   240,
+			Status:      domain.BookingStatusBooked,
+			CreatedAt:   time.Now().UTC(),
+		},
+		Screening: domain.Screening{
+			ID:              screeningID,
+			Movie:           domain.Movie{Title: "ธี่หยด 2"},
+			Auditorium:      domain.Auditorium{Name: "LUMINA 2"},
+			StartsAt:        time.Now().UTC().Add(time.Hour),
+			TicketPriceBaht: 240,
+		},
+	}}}
+	router := bookingTestRouter(user, service)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/bookings/me", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-session"})
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK || service.userID != user.ID.Hex() {
+		t.Fatalf("unexpected response: status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "ธี่หยด 2") ||
+		!strings.Contains(recorder.Body.String(), "LUMINA-"+bookingID.Hex()) {
+		t.Fatalf("ticket details missing: %s", recorder.Body.String())
 	}
 }

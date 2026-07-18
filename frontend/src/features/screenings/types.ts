@@ -16,6 +16,7 @@ export interface ScreeningSummary {
   movie: Movie
   auditorium: Auditorium
   starts_at: string
+  ticket_price_baht: number
 }
 
 export interface Seat {
@@ -32,6 +33,7 @@ export interface SeatMap {
   movie: Movie
   auditorium: Auditorium
   starts_at: string
+  ticket_price_baht: number
   seats: Seat[]
 }
 
@@ -46,8 +48,16 @@ export interface Booking {
   id: string
   screening_id: string
   seat_id: string
+  price_baht: number
+  ticket_code: string
   status: 'BOOKED'
   created_at: string
+}
+
+export interface MyTicket extends Booking {
+  movie_title: string
+  auditorium_name: string
+  starts_at: string
 }
 
 export interface SeatEvent {

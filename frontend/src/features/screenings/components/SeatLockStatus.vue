@@ -4,17 +4,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Booking, SeatLock } from '../types'
 
 const props = defineProps<{
-  lock: SeatLock | null
+  locks: SeatLock[]
   signedIn: boolean
   isUpdating: boolean
   error: string
-  booking: Booking | null
+  bookings: Booking[]
+  unitPriceBaht: number
   isConfirming: boolean
   bookingError: string
 }>()
 
 const emit = defineEmits<{
-  release: []
+  releaseAll: []
   expired: []
   confirm: []
 }>()
@@ -24,6 +25,9 @@ const confirmationDialog = ref<HTMLDialogElement | null>(null)
 let timer: ReturnType<typeof setInterval> | undefined
 let expirationReported = false
 
+const seatLabel = computed(() => props.locks.map((lock) => lock.seat_id).join(', '))
+const totalPrice = computed(() => props.unitPriceBaht * props.locks.length)
+const priceFormatter = new Intl.NumberFormat('th-TH')
 const timeLabel = computed(() => {
   const minutes = Math.floor(remainingSeconds.value / 60)
   const seconds = remainingSeconds.value % 60
@@ -31,16 +35,14 @@ const timeLabel = computed(() => {
 })
 
 function updateRemainingTime() {
-  if (!props.lock) {
+  if (!props.locks.length) {
     remainingSeconds.value = 0
     expirationReported = false
     return
   }
 
-  remainingSeconds.value = Math.max(
-    0,
-    Math.ceil((new Date(props.lock.expires_at).getTime() - Date.now()) / 1000),
-  )
+  const earliestExpiry = Math.min(...props.locks.map((lock) => new Date(lock.expires_at).getTime()))
+  remainingSeconds.value = Math.max(0, Math.ceil((earliestExpiry - Date.now()) / 1000))
 
   if (remainingSeconds.value === 0 && !expirationReported) {
     expirationReported = true
@@ -49,7 +51,7 @@ function updateRemainingTime() {
 }
 
 watch(
-  () => props.lock?.expires_at,
+  () => props.locks.map((lock) => `${lock.seat_id}:${lock.expires_at}`).join('|'),
   () => {
     expirationReported = false
     updateRemainingTime()
@@ -57,30 +59,24 @@ watch(
 )
 
 watch(
-  () => props.lock,
-  (lock) => {
-    if (!lock) closeConfirmation()
+  () => props.locks.length,
+  (length) => {
+    if (length === 0) closeConfirmation()
   },
 )
 
 function openConfirmation() {
   const dialog = confirmationDialog.value
   if (!dialog) return
-  if (typeof dialog.showModal === 'function') {
-    dialog.showModal()
-  } else {
-    dialog.setAttribute('open', '')
-  }
+  if (typeof dialog.showModal === 'function') dialog.showModal()
+  else dialog.setAttribute('open', '')
 }
 
 function closeConfirmation() {
   const dialog = confirmationDialog.value
   if (!dialog?.open) return
-  if (typeof dialog.close === 'function') {
-    dialog.close()
-  } else {
-    dialog.removeAttribute('open')
-  }
+  if (typeof dialog.close === 'function') dialog.close()
+  else dialog.removeAttribute('open')
 }
 
 onMounted(() => {
@@ -95,10 +91,15 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="lock-status" aria-live="polite">
-    <div v-if="lock" class="active-lock">
-      <div>
-        <span>Seat {{ lock.seat_id }} held for</span>
-        <strong>{{ timeLabel }}</strong>
+    <div v-if="locks.length" class="active-lock">
+      <div class="lock-summary">
+        <span>ที่นั่งที่เลือก</span>
+        <strong>{{ seatLabel }}</strong>
+        <small>เหลือเวลา {{ timeLabel }}</small>
+      </div>
+      <div class="price-summary">
+        <span>{{ locks.length }} ที่นั่ง × ฿{{ priceFormatter.format(unitPriceBaht) }}</span>
+        <strong>฿{{ priceFormatter.format(totalPrice) }}</strong>
       </div>
       <div class="lock-actions">
         <button
@@ -107,28 +108,27 @@ onBeforeUnmount(() => {
           :disabled="isUpdating || isConfirming"
           @click="openConfirmation"
         >
-          Confirm booking
+          ยืนยันและชำระเงิน
         </button>
-        <button type="button" :disabled="isUpdating || isConfirming" @click="emit('release')">
-          {{ isUpdating ? 'Releasing...' : 'Release seat' }}
+        <button type="button" :disabled="isUpdating || isConfirming" @click="emit('releaseAll')">
+          {{ isUpdating ? 'กำลังยกเลิก...' : 'ยกเลิกทั้งหมด' }}
         </button>
       </div>
     </div>
 
-    <div v-else-if="booking" class="booking-success" role="status">
-      <strong>Seat {{ booking.seat_id }} is booked.</strong>
-      <span>Booking reference {{ booking.id }}</span>
+    <div v-else-if="bookings.length" class="booking-success" role="status">
+      <strong>จองสำเร็จ {{ bookings.length }} ที่นั่ง</strong>
+      <span>ที่นั่ง {{ bookings.map((booking) => booking.seat_id).join(', ') }}</span>
+      <a href="#my-tickets">เปิดตั๋วของฉัน</a>
     </div>
 
     <p v-else-if="signedIn">
-      {{
-        isUpdating ? 'Locking your seat...' : 'Choose an available seat to hold it for 5 minutes.'
-      }}
+      {{ isUpdating ? 'กำลังอัปเดตที่นั่ง...' : 'เลือกได้สูงสุด 6 ที่นั่งสำหรับคุณและเพื่อน' }}
     </p>
-    <p v-else>Sign in with Google before locking a seat.</p>
+    <p v-else>เข้าสู่ระบบด้วย Google ก่อนเลือกที่นั่ง</p>
 
     <p v-if="error" class="lock-error" role="alert">{{ error }}</p>
-    <p v-if="bookingError && !lock" class="lock-error" role="alert">{{ bookingError }}</p>
+    <p v-if="bookingError" class="lock-error" role="alert">{{ bookingError }}</p>
 
     <dialog
       ref="confirmationDialog"
@@ -137,22 +137,39 @@ onBeforeUnmount(() => {
       @cancel="closeConfirmation"
     >
       <form method="dialog" @submit.prevent>
-        <p class="dialog-label">Mock payment</p>
-        <h3 id="confirmation-title">Book seat {{ lock?.seat_id }}?</h3>
-        <p>
-          This simulates a successful payment. The seat will become permanently booked and cannot be
-          selected again.
-        </p>
+        <p class="dialog-label">ระบบชำระเงินจำลอง</p>
+        <h3 id="confirmation-title">ตรวจสอบรายการจอง</h3>
+        <dl>
+          <div>
+            <dt>ที่นั่ง</dt>
+            <dd>{{ seatLabel }}</dd>
+          </div>
+          <div>
+            <dt>จำนวน</dt>
+            <dd>{{ locks.length }} ที่นั่ง</dd>
+          </div>
+          <div>
+            <dt>ราคาต่อใบ</dt>
+            <dd>฿{{ priceFormatter.format(unitPriceBaht) }}</dd>
+          </div>
+          <div class="dialog-total">
+            <dt>ยอดรวม</dt>
+            <dd>฿{{ priceFormatter.format(totalPrice) }}</dd>
+          </div>
+        </dl>
+        <p>กดยืนยันเพื่อจำลองการชำระเงินและออก E-Ticket แยกตามแต่ละที่นั่ง</p>
         <p v-if="bookingError" class="dialog-error" role="alert">{{ bookingError }}</p>
         <div class="dialog-actions">
-          <button type="button" :disabled="isConfirming" @click="closeConfirmation">Go back</button>
+          <button type="button" :disabled="isConfirming" @click="closeConfirmation">
+            กลับไปตรวจสอบ
+          </button>
           <button
             type="button"
             class="confirm-button"
             :disabled="isConfirming"
             @click="emit('confirm')"
           >
-            {{ isConfirming ? 'Confirming...' : `Book seat ${lock?.seat_id ?? ''}` }}
+            {{ isConfirming ? 'กำลังออกตั๋ว...' : `ชำระ ฿${priceFormatter.format(totalPrice)}` }}
           </button>
         </div>
       </form>
@@ -163,11 +180,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .lock-status {
   min-height: 3.75rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #27272a;
-  color: #a1a1aa;
-  font-size: 0.9rem;
+  margin-top: 1.4rem;
+  padding: 1rem;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.25rem;
+  color: #93939b;
+  background: #111820;
+  font-size: 0.75rem;
 }
 
 .lock-status p {
@@ -175,10 +194,44 @@ onBeforeUnmount(() => {
 }
 
 .active-lock {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 1rem;
   align-items: center;
+}
+
+.lock-summary,
+.price-summary {
+  display: grid;
+}
+
+.lock-summary strong {
+  margin-top: 0.2rem;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.lock-summary small {
+  margin-top: 0.2rem;
+  color: #ef4d52;
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-summary {
+  min-width: 7rem;
+  text-align: right;
+}
+
+.price-summary span {
+  color: #7f7f87;
+  font-size: 0.62rem;
+}
+
+.price-summary strong {
+  margin-top: 0.2rem;
+  color: #fff;
+  font-size: 1.2rem;
 }
 
 .lock-actions,
@@ -189,25 +242,15 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
-.active-lock span,
-.active-lock strong {
-  display: block;
-}
-
-.active-lock strong {
-  margin-top: 0.2rem;
-  color: #fbbf24;
-  font-size: 1.35rem;
-  font-variant-numeric: tabular-nums;
-}
-
 button {
-  padding: 0.55rem 0.75rem;
-  border: 1px solid #52525b;
-  border-radius: 0.45rem;
-  color: #e4e4e7;
+  min-height: 2.35rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #41414a;
+  border-radius: 0.25rem;
+  color: #d9d9de;
   background: transparent;
-  font-weight: 700;
+  font-size: 0.68rem;
+  font-weight: 750;
   cursor: pointer;
 }
 
@@ -217,54 +260,85 @@ button:disabled {
 }
 
 .confirm-button {
-  border-color: #fbbf24;
-  color: #18181b;
-  background: #fbbf24;
+  border-color: #d91920;
+  color: #fff;
+  background: #d91920;
 }
 
 .booking-success {
   display: grid;
-  gap: 0.3rem;
-  color: #d4d4d8;
+  gap: 0.25rem;
+  color: #cdd3dc;
 }
 
 .booking-success strong {
-  color: #fbbf24;
+  color: #74d5b1;
 }
 
-.booking-success span {
-  overflow-wrap: anywhere;
-  font-size: 0.8rem;
+.booking-success a {
+  width: max-content;
+  margin-top: 0.35rem;
+  color: #ef4d52;
+  font-weight: 800;
 }
 
 .confirmation-dialog {
   width: min(28rem, calc(100% - 2rem));
   padding: 1.5rem;
-  border: 1px solid #3f3f46;
-  border-radius: 0.75rem;
-  color: #e4e4e7;
-  background: #18181b;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.35rem;
+  color: #dce1e8;
+  background: #17171b;
+  box-shadow: 0 2rem 6rem rgb(0 0 0 / 50%);
 }
 
 .confirmation-dialog::backdrop {
-  background: rgb(0 0 0 / 0.72);
+  background: rgb(0 0 0 / 72%);
 }
 
 .confirmation-dialog h3 {
   margin: 0;
-  color: #fafafa;
+  color: #fff;
   font-size: 1.25rem;
 }
 
-.confirmation-dialog p {
+.confirmation-dialog > form > p:not(.dialog-label, .dialog-error) {
   margin: 0.75rem 0 0;
+  color: #8e8e96;
   line-height: 1.6;
+}
+
+.confirmation-dialog dl {
+  margin: 1.2rem 0 0;
+}
+
+.confirmation-dialog dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid #303035;
+}
+
+.confirmation-dialog dt {
+  color: #888890;
+}
+
+.confirmation-dialog dd {
+  margin: 0;
+  color: #fff;
+  font-weight: 750;
+}
+
+.confirmation-dialog .dialog-total dd {
+  color: #ef4d52;
+  font-size: 1.15rem;
 }
 
 .dialog-label {
   margin: 0 0 0.4rem !important;
-  color: #fbbf24;
-  font-size: 0.75rem;
+  color: #ef4d52;
+  font-size: 0.7rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -273,12 +347,24 @@ button:disabled {
   margin-top: 1.5rem;
 }
 
-.dialog-error {
-  color: #fecaca;
-}
-
+.dialog-error,
 .lock-error {
   margin-top: 0.75rem !important;
   color: #fecaca;
+}
+
+@media (max-width: 720px) {
+  .active-lock {
+    grid-template-columns: 1fr auto;
+  }
+
+  .lock-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .lock-actions button {
+    flex: 1;
+  }
 }
 </style>

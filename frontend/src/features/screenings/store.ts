@@ -4,13 +4,16 @@ import { defineStore } from 'pinia'
 import {
   acquireSeatLock,
   confirmSeatBooking,
+  fetchMyTickets,
   fetchScreenings,
   fetchSeatMap,
   releaseSeatLock,
   ScreeningApiError,
 } from './api'
 import { subscribeToSeatEvents } from './realtime'
-import type { Booking, ScreeningSummary, SeatEvent, SeatLock, SeatMap } from './types'
+import type { Booking, MyTicket, ScreeningSummary, SeatEvent, SeatLock, SeatMap } from './types'
+
+const maxSeatsPerBooking = 6
 
 export const useScreeningStore = defineStore('screenings', () => {
   const screenings = ref<ScreeningSummary[]>([])
@@ -20,12 +23,15 @@ export const useScreeningStore = defineStore('screenings', () => {
   const seatsError = ref('')
   const isLoadingScreenings = ref(false)
   const isLoadingSeats = ref(false)
-  const activeLock = ref<SeatLock | null>(null)
+  const activeLocks = ref<SeatLock[]>([])
   const isUpdatingLock = ref(false)
   const lockError = ref('')
-  const confirmedBooking = ref<Booking | null>(null)
+  const confirmedBookings = ref<Booking[]>([])
   const isConfirmingBooking = ref(false)
   const bookingError = ref('')
+  const myTickets = ref<MyTicket[]>([])
+  const isLoadingTickets = ref(false)
+  const ticketsError = ref('')
 
   let seatRequestNumber = 0
   let stopSeatEvents: (() => void) | null = null
@@ -46,7 +52,7 @@ export const useScreeningStore = defineStore('screenings', () => {
         seatMap.value = null
       }
     } catch {
-      screeningsError.value = 'Unable to load showtimes. Check that the API is running.'
+      screeningsError.value = 'โหลดรอบฉายไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ API'
     } finally {
       isLoadingScreenings.value = false
     }
@@ -56,9 +62,9 @@ export const useScreeningStore = defineStore('screenings', () => {
     stopRealtime()
     selectedScreeningID.value = screeningID
     seatMap.value = null
-    activeLock.value = null
+    activeLocks.value = []
     lockError.value = ''
-    confirmedBooking.value = null
+    confirmedBookings.value = []
     bookingError.value = ''
     seatsError.value = ''
 
@@ -85,7 +91,7 @@ export const useScreeningStore = defineStore('screenings', () => {
       }
 
       seatMap.value = result
-      activeLock.value = lockFromSeatMap(result)
+      activeLocks.value = locksFromSeatMap(result)
       seatsError.value = ''
       return true
     } catch {
@@ -94,7 +100,7 @@ export const useScreeningStore = defineStore('screenings', () => {
         selectedScreeningID.value === screeningID &&
         !seatMap.value
       ) {
-        seatsError.value = 'Unable to load the seat map. Please try again.'
+        seatsError.value = 'โหลดผังที่นั่งไม่สำเร็จ กรุณาลองอีกครั้ง'
       }
       return false
     } finally {
@@ -114,14 +120,15 @@ export const useScreeningStore = defineStore('screenings', () => {
 
   function scheduleRealtimeRefresh(event: SeatEvent) {
     const ownLockExpired =
-      event.type === 'seat.expired' && activeLock.value?.seat_id === event.seat_id
+      event.type === 'seat.expired' &&
+      activeLocks.value.some((lock) => lock.seat_id === event.seat_id)
 
     if (realtimeRefreshTimer) clearTimeout(realtimeRefreshTimer)
     realtimeRefreshTimer = setTimeout(async () => {
       realtimeRefreshTimer = null
       await reloadSeatMap()
-      if (ownLockExpired && !activeLock.value) {
-        lockError.value = 'Your seat hold expired. Choose an available seat to try again.'
+      if (ownLockExpired) {
+        lockError.value = `หมดเวลาพักที่นั่ง ${event.seat_id} กรุณาเลือกใหม่`
       }
     }, 75)
   }
@@ -133,17 +140,32 @@ export const useScreeningStore = defineStore('screenings', () => {
     realtimeRefreshTimer = null
   }
 
+  async function toggleSeatLock(seatID: string) {
+    const existing = activeLocks.value.find((lock) => lock.seat_id === seatID)
+    if (existing) {
+      await unlockSeat(seatID)
+      return
+    }
+    await lockSeat(seatID)
+  }
+
   async function lockSeat(seatID: string) {
-    if (!selectedScreeningID.value || activeLock.value || isUpdatingLock.value) return
+    if (!selectedScreeningID.value || isUpdatingLock.value) return
+    if (activeLocks.value.length >= maxSeatsPerBooking) {
+      lockError.value = `เลือกได้สูงสุด ${maxSeatsPerBooking} ที่นั่งต่อรายการ`
+      return
+    }
 
     isUpdatingLock.value = true
     lockError.value = ''
-    confirmedBooking.value = null
+    confirmedBookings.value = []
     bookingError.value = ''
 
     try {
       const lock = await acquireSeatLock(selectedScreeningID.value, seatID)
-      activeLock.value = lock
+      activeLocks.value = [...activeLocks.value, lock].sort((left, right) =>
+        left.seat_id.localeCompare(right.seat_id, undefined, { numeric: true }),
+      )
 
       const seat = seatMap.value?.seats.find((item) => item.id === lock.seat_id)
       if (seat) {
@@ -152,18 +174,17 @@ export const useScreeningStore = defineStore('screenings', () => {
         seat.lock_expires_at = lock.expires_at
       }
     } catch (error) {
-      const message = lockErrorMessage(error)
       if (error instanceof ScreeningApiError && error.status === 409) {
         await reloadSeatMap()
       }
-      lockError.value = message
+      lockError.value = lockErrorMessage(error)
     } finally {
       isUpdatingLock.value = false
     }
   }
 
-  async function unlockSeat() {
-    const lock = activeLock.value
+  async function unlockSeat(seatID: string) {
+    const lock = activeLocks.value.find((item) => item.seat_id === seatID)
     if (!lock || isUpdatingLock.value) return
 
     isUpdatingLock.value = true
@@ -172,7 +193,7 @@ export const useScreeningStore = defineStore('screenings', () => {
 
     try {
       await releaseSeatLock(lock.screening_id, lock.seat_id)
-      activeLock.value = null
+      activeLocks.value = activeLocks.value.filter((item) => item.seat_id !== seatID)
       await reloadSeatMap()
     } catch (error) {
       lockError.value = lockErrorMessage(error)
@@ -181,31 +202,78 @@ export const useScreeningStore = defineStore('screenings', () => {
     }
   }
 
+  async function unlockAllSeats() {
+    if (isUpdatingLock.value || activeLocks.value.length === 0) return
+    isUpdatingLock.value = true
+    lockError.value = ''
+
+    const locks = [...activeLocks.value]
+    try {
+      const results = await Promise.allSettled(
+        locks.map((lock) => releaseSeatLock(lock.screening_id, lock.seat_id)),
+      )
+      if (results.some((result) => result.status === 'rejected')) {
+        lockError.value = 'ยกเลิกที่นั่งบางรายการไม่สำเร็จ กรุณาลองอีกครั้ง'
+      }
+      await reloadSeatMap()
+    } finally {
+      isUpdatingLock.value = false
+    }
+  }
+
   async function handleLockExpired() {
-    activeLock.value = null
     await reloadSeatMap()
-    lockError.value = 'Your seat hold expired. Choose an available seat to try again.'
+    lockError.value = 'มีที่นั่งหมดเวลาพัก กรุณาตรวจสอบรายการอีกครั้ง'
   }
 
   async function confirmBooking() {
-    const lock = activeLock.value
-    if (!lock || isConfirmingBooking.value || isUpdatingLock.value) return
+    const locks = [...activeLocks.value]
+    if (!locks.length || isConfirmingBooking.value || isUpdatingLock.value) return
 
     isConfirmingBooking.value = true
     bookingError.value = ''
 
     try {
-      confirmedBooking.value = await confirmSeatBooking(lock.screening_id, lock.seat_id)
-      activeLock.value = null
+      const results = await Promise.allSettled(
+        locks.map((lock) => confirmSeatBooking(lock.screening_id, lock.seat_id)),
+      )
+      const successful = results.flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : [],
+      )
+      const failed = results.find((result) => result.status === 'rejected')
+
+      confirmedBookings.value = successful
       await reloadSeatMap()
-    } catch (error) {
-      bookingError.value = bookingErrorMessage(error)
-      if (error instanceof ScreeningApiError && [401, 409].includes(error.status)) {
-        await reloadSeatMap()
+      if (successful.length) await loadMyTickets()
+
+      if (failed?.status === 'rejected') {
+        bookingError.value = successful.length
+          ? `จองสำเร็จ ${successful.length} ที่นั่ง แต่มีบางที่นั่งไม่สำเร็จ กรุณาตรวจสอบตั๋วของฉัน`
+          : bookingErrorMessage(failed.reason)
       }
     } finally {
       isConfirmingBooking.value = false
     }
+  }
+
+  async function loadMyTickets() {
+    isLoadingTickets.value = true
+    ticketsError.value = ''
+    try {
+      myTickets.value = await fetchMyTickets()
+    } catch (error) {
+      myTickets.value = []
+      if (!(error instanceof ScreeningApiError && error.status === 401)) {
+        ticketsError.value = 'โหลดตั๋วไม่สำเร็จ กรุณาลองอีกครั้ง'
+      }
+    } finally {
+      isLoadingTickets.value = false
+    }
+  }
+
+  function clearTickets() {
+    myTickets.value = []
+    ticketsError.value = ''
   }
 
   return {
@@ -216,60 +284,60 @@ export const useScreeningStore = defineStore('screenings', () => {
     seatsError,
     isLoadingScreenings,
     isLoadingSeats,
-    activeLock,
+    activeLocks,
+    maxSeatsPerBooking,
     isUpdatingLock,
     lockError,
-    confirmedBooking,
+    confirmedBookings,
     isConfirmingBooking,
     bookingError,
+    myTickets,
+    isLoadingTickets,
+    ticketsError,
     loadScreenings,
     selectScreening,
     reloadSeatMap,
-    lockSeat,
-    unlockSeat,
+    toggleSeatLock,
+    unlockAllSeats,
     handleLockExpired,
     confirmBooking,
+    loadMyTickets,
+    clearTickets,
     stopRealtime,
   }
 })
 
-function lockFromSeatMap(seatMap: SeatMap): SeatLock | null {
-  const seat = seatMap.seats.find((item) => item.locked_by_me && item.lock_expires_at)
-  if (!seat?.lock_expires_at) return null
-
-  return {
-    screening_id: seatMap.screening_id,
-    seat_id: seat.id,
-    status: 'LOCKED',
-    expires_at: seat.lock_expires_at,
-  }
+function locksFromSeatMap(seatMap: SeatMap): SeatLock[] {
+  return seatMap.seats.flatMap((seat) => {
+    if (!seat.locked_by_me || !seat.lock_expires_at) return []
+    return [
+      {
+        screening_id: seatMap.screening_id,
+        seat_id: seat.id,
+        status: 'LOCKED' as const,
+        expires_at: seat.lock_expires_at,
+      },
+    ]
+  })
 }
 
 function bookingErrorMessage(error: unknown) {
   if (error instanceof ScreeningApiError) {
-    if (error.status === 401) return 'Your session expired. Sign in again before booking.'
-    if (error.code === 'SEAT_LOCK_EXPIRED') {
-      return 'Your seat hold expired before confirmation. Choose the seat again.'
-    }
-    if (error.code === 'SEAT_LOCK_NOT_OWNED') {
-      return 'This seat is no longer held by your account.'
-    }
-    if (error.code === 'SEAT_ALREADY_BOOKED') {
-      return 'That seat has already been booked. Choose another seat.'
-    }
-    if (error.code === 'SCREENING_STARTED') {
-      return 'This screening has already started and can no longer be booked.'
-    }
+    if (error.status === 401) return 'Session หมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง'
+    if (error.code === 'SEAT_LOCK_EXPIRED') return 'หมดเวลาพักที่นั่ง กรุณาเลือกที่นั่งใหม่'
+    if (error.code === 'SEAT_LOCK_NOT_OWNED') return 'ที่นั่งนี้ไม่ได้ถูกพักด้วยบัญชีของคุณ'
+    if (error.code === 'SEAT_ALREADY_BOOKED') return 'ที่นั่งถูกจองไปแล้ว กรุณาเลือกที่นั่งอื่น'
+    if (error.code === 'SCREENING_STARTED') return 'รอบฉายนี้เริ่มแล้ว ไม่สามารถจองได้'
   }
 
-  return 'Unable to confirm the booking. Your seat hold is still active; please try again.'
+  return 'ยืนยันการจองไม่สำเร็จ กรุณาลองอีกครั้ง'
 }
 
 function lockErrorMessage(error: unknown) {
   if (error instanceof ScreeningApiError) {
-    if (error.status === 401) return 'Your session expired. Sign in again before locking a seat.'
-    if (error.status === 409) return 'Another viewer locked that seat first. Choose another seat.'
+    if (error.status === 401) return 'Session หมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง'
+    if (error.status === 409) return 'มีผู้ใช้อื่นเลือกที่นั่งนี้ก่อน กรุณาเลือกที่นั่งอื่น'
   }
 
-  return 'Unable to update the seat hold. Please try again.'
+  return 'เปลี่ยนสถานะที่นั่งไม่สำเร็จ กรุณาลองอีกครั้ง'
 }

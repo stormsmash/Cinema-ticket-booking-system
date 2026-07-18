@@ -33,11 +33,12 @@ type Seat struct {
 }
 
 type Screening struct {
-	ID         bson.ObjectID `bson:"_id,omitempty"`
-	Movie      Movie         `bson:"movie"`
-	Auditorium Auditorium    `bson:"auditorium"`
-	StartsAt   time.Time     `bson:"starts_at"`
-	Seats      []Seat        `bson:"seats"`
-	CreatedAt  time.Time     `bson:"created_at"`
-	UpdatedAt  time.Time     `bson:"updated_at"`
+	ID              bson.ObjectID `bson:"_id,omitempty"`
+	Movie           Movie         `bson:"movie"`
+	Auditorium      Auditorium    `bson:"auditorium"`
+	StartsAt        time.Time     `bson:"starts_at"`
+	TicketPriceBaht int           `bson:"ticket_price_baht"`
+	Seats           []Seat        `bson:"seats"`
+	CreatedAt       time.Time     `bson:"created_at"`
+	UpdatedAt       time.Time     `bson:"updated_at"`
 }

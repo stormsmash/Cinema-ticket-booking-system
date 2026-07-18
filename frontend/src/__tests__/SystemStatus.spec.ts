@@ -22,7 +22,7 @@ describe('SystemStatus', () => {
     const wrapper = mount(SystemStatus)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Backend connected')
+    expect(wrapper.text()).toContain('Backend เชื่อมต่อแล้ว')
   })
 
   it('shows an unavailable state when the request fails', async () => {
@@ -31,6 +31,6 @@ describe('SystemStatus', () => {
     const wrapper = mount(SystemStatus)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Backend unavailable')
+    expect(wrapper.text()).toContain('Backend ไม่พร้อมใช้งาน')
   })
 })

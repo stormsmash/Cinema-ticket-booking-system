@@ -20,6 +20,7 @@ type Booking struct {
 	UserID      string        `bson:"user_id"`
 	ScreeningID bson.ObjectID `bson:"screening_id"`
 	SeatID      string        `bson:"seat_id"`
+	PriceBaht   int           `bson:"price_baht"`
 	Status      BookingStatus `bson:"status"`
 	ExpiresAt   *time.Time    `bson:"expires_at,omitempty"`
 	CreatedAt   time.Time     `bson:"created_at"`

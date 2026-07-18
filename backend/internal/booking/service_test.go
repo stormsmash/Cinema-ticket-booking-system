@@ -18,6 +18,8 @@ type repositoryStub struct {
 	findError   error
 	createError error
 	created     domain.Booking
+	listed      []domain.Booking
+	listError   error
 }
 
 func (stub *repositoryStub) FindBooked(
@@ -31,6 +33,10 @@ func (stub *repositoryStub) FindBooked(
 func (stub *repositoryStub) CreateBooked(_ context.Context, item domain.Booking) error {
 	stub.created = item
 	return stub.createError
+}
+
+func (stub *repositoryStub) ListBookedByUser(context.Context, string) ([]domain.Booking, error) {
+	return stub.listed, stub.listError
 }
 
 type lockClaimerStub struct {
@@ -74,8 +80,9 @@ func (stub *eventPublisherStub) Publish(_ context.Context, event realtime.SeatEv
 
 func bookingTestScreening() domain.Screening {
 	return domain.Screening{
-		ID:       bson.NewObjectID(),
-		StartsAt: time.Now().UTC().Add(time.Hour),
+		ID:              bson.NewObjectID(),
+		StartsAt:        time.Now().UTC().Add(time.Hour),
+		TicketPriceBaht: 240,
 		Seats: []domain.Seat{{
 			ID:     "A1",
 			Status: domain.SeatStatusAvailable,
@@ -99,6 +106,9 @@ func TestConfirmCreatesBookingThenCommitsClaim(t *testing.T) {
 	}
 	if repository.created.SeatID != "A1" || repository.created.UserID != "user-1" {
 		t.Fatalf("unexpected booking: %#v", repository.created)
+	}
+	if repository.created.PriceBaht != 240 {
+		t.Fatalf("expected ticket price 240, got %d", repository.created.PriceBaht)
 	}
 	if !locks.claimed || !locks.committed || locks.restored {
 		t.Fatalf("unexpected claim lifecycle: %#v", locks)

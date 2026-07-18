@@ -12,6 +12,7 @@ const screening: ScreeningSummary = {
   movie: { title: 'Midnight Signal', duration_minutes: 112 },
   auditorium: { name: 'Hall 1', rows: 1, seats_per_row: 2 },
   starts_at: '2026-07-15T12:00:00Z',
+  ticket_price_baht: 240,
 }
 
 const seatMap: SeatMap = {
@@ -19,6 +20,7 @@ const seatMap: SeatMap = {
   movie: screening.movie,
   auditorium: screening.auditorium,
   starts_at: screening.starts_at,
+  ticket_price_baht: screening.ticket_price_baht,
   seats: [
     { id: 'A1', row: 'A', number: 1, status: 'AVAILABLE', locked_by_me: false },
     { id: 'A2', row: 'A', number: 2, status: 'BOOKED', locked_by_me: false },
@@ -49,7 +51,7 @@ describe('SeatGrid', () => {
 
     await availableSeat.trigger('click')
 
-    expect(wrapper.emitted('lock')).toEqual([['A1']])
+    expect(wrapper.emitted('toggle')).toEqual([['A1']])
     expect(availableSeat.attributes('aria-pressed')).toBe('false')
   })
 })
@@ -64,19 +66,20 @@ describe('SeatLockStatus', () => {
     }
     const wrapper = mount(SeatLockStatus, {
       props: {
-        lock,
+        locks: [lock],
         signedIn: true,
         isUpdating: false,
         error: '',
-        booking: null,
+        bookings: [],
+        unitPriceBaht: 240,
         isConfirming: false,
         bookingError: '',
       },
     })
 
-    expect(wrapper.text()).toContain('Seat A1 held for')
+    expect(wrapper.text()).toContain('A1')
     await wrapper.get('.lock-actions button:last-child').trigger('click')
-    expect(wrapper.emitted('release')).toHaveLength(1)
+    expect(wrapper.emitted('releaseAll')).toHaveLength(1)
 
     wrapper.unmount()
   })
@@ -90,11 +93,12 @@ describe('SeatLockStatus', () => {
     }
     const wrapper = mount(SeatLockStatus, {
       props: {
-        lock,
+        locks: [lock],
         signedIn: true,
         isUpdating: false,
         error: '',
-        booking: null,
+        bookings: [],
+        unitPriceBaht: 240,
         isConfirming: false,
         bookingError: '',
       },
@@ -114,23 +118,26 @@ describe('SeatLockStatus', () => {
       id: 'booking-123',
       screening_id: screening.id,
       seat_id: 'A1',
+      price_baht: 240,
+      ticket_code: 'LUMINA-booking-123',
       status: 'BOOKED',
       created_at: '2026-07-15T12:00:00Z',
     }
     const wrapper = mount(SeatLockStatus, {
       props: {
-        lock: null,
+        locks: [],
         signedIn: true,
         isUpdating: false,
         error: '',
-        booking,
+        bookings: [booking],
+        unitPriceBaht: 240,
         isConfirming: false,
         bookingError: '',
       },
     })
 
-    expect(wrapper.text()).toContain('Seat A1 is booked')
-    expect(wrapper.text()).toContain('booking-123')
+    expect(wrapper.text()).toContain('จองสำเร็จ 1 ที่นั่ง')
+    expect(wrapper.text()).toContain('เปิดตั๋วของฉัน')
     wrapper.unmount()
   })
 })

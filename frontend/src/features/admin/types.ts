@@ -1,9 +1,5 @@
 export type BookingStatus = 'HOLDING' | 'BOOKED' | 'TIMED_OUT' | 'CANCELLED'
-export type AuditEvent =
-  | 'BOOKING_SUCCESS'
-  | 'BOOKING_TIMEOUT'
-  | 'SEAT_RELEASED'
-  | 'SYSTEM_ERROR'
+export type AuditEvent = 'BOOKING_SUCCESS' | 'BOOKING_TIMEOUT' | 'SEAT_RELEASED' | 'SYSTEM_ERROR'
 
 export interface AdminBooking {
   id: string

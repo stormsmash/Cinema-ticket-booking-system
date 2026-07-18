@@ -204,17 +204,25 @@ func backfillSeatStatuses(ctx context.Context, collection *mongo.Collection) err
 func seedScreenings(ctx context.Context, collection *mongo.Collection, now time.Time) error {
 	for _, screening := range screeningSeeds(now) {
 		filter := bson.D{{Key: "_id", Value: screening.ID}}
-		update := bson.D{{
-			Key: "$setOnInsert",
-			Value: bson.D{
-				{Key: "movie", Value: screening.Movie},
-				{Key: "auditorium", Value: screening.Auditorium},
-				{Key: "starts_at", Value: screening.StartsAt},
-				{Key: "seats", Value: screening.Seats},
-				{Key: "created_at", Value: screening.CreatedAt},
-				{Key: "updated_at", Value: screening.UpdatedAt},
+		update := bson.D{
+			{
+				Key: "$set",
+				Value: bson.D{
+					{Key: "movie", Value: screening.Movie},
+					{Key: "auditorium", Value: screening.Auditorium},
+					{Key: "starts_at", Value: screening.StartsAt},
+					{Key: "ticket_price_baht", Value: screening.TicketPriceBaht},
+					{Key: "updated_at", Value: screening.UpdatedAt},
+				},
 			},
-		}}
+			{
+				Key: "$setOnInsert",
+				Value: bson.D{
+					{Key: "seats", Value: screening.Seats},
+					{Key: "created_at", Value: screening.CreatedAt},
+				},
+			},
+		}
 
 		if _, err := collection.UpdateOne(ctx, filter, update, options.UpdateOne().SetUpsert(true)); err != nil {
 			return fmt.Errorf("seed screening %s: %w", screening.ID.Hex(), err)
@@ -229,38 +237,51 @@ func screeningSeeds(now time.Time) []domain.Screening {
 	createdAt := now.Truncate(time.Second)
 
 	return []domain.Screening{
-		{
-			ID: mustObjectID("66a000000000000000000001"),
-			Movie: domain.Movie{
-				Title:           "Midnight Signal",
-				DurationMinutes: 118,
-			},
-			Auditorium: domain.Auditorium{
-				Name:        "Hall 1",
-				Rows:        5,
-				SeatsPerRow: 10,
-			},
-			StartsAt:  startOfDay.Add(24*time.Hour + 19*time.Hour),
-			Seats:     buildSeats([]string{"A", "B", "C", "D", "E"}, 10),
-			CreatedAt: createdAt,
-			UpdatedAt: createdAt,
+		newScreeningSeed("66a000000000000000000001", "หลานม่า", 127, 260, "LUMINA 1", 5, 10, startOfDay.Add(31*time.Hour+30*time.Minute), createdAt),
+		newScreeningSeed("66a000000000000000000002", "ธี่หยด 2", 110, 240, "LUMINA 2", 4, 8, startOfDay.Add(35*time.Hour), createdAt),
+		newScreeningSeed("66a000000000000000000003", "วิมานหนาม", 131, 220, "LUMINA 3", 5, 10, startOfDay.Add(38*time.Hour+15*time.Minute), createdAt),
+		newScreeningSeed("66a000000000000000000004", "อนงค์", 125, 200, "LUMINA 4", 4, 8, startOfDay.Add(34*time.Hour+30*time.Minute), createdAt),
+		newScreeningSeed("66a000000000000000000005", "สัปเหร่อ", 125, 260, "LUMINA 1", 5, 10, startOfDay.Add(32*time.Hour), createdAt),
+		newScreeningSeed("66a000000000000000000006", "4 Kings II", 139, 240, "LUMINA 2", 4, 8, startOfDay.Add(57*time.Hour+30*time.Minute), createdAt),
+		newScreeningSeed("66a000000000000000000007", "ร่างทรง", 131, 200, "LUMINA 4", 4, 8, startOfDay.Add(63*time.Hour+45*time.Minute), createdAt),
+		newScreeningSeed("66a000000000000000000008", "ฉลาดเกมส์โกง", 130, 220, "LUMINA 3", 5, 10, startOfDay.Add(54*time.Hour), createdAt),
+		newScreeningSeed("66a000000000000000000009", "พี่มาก..พระโขนง", 115, 260, "LUMINA 1", 5, 10, startOfDay.Add(60*time.Hour), createdAt),
+		newScreeningSeed("66a00000000000000000000a", "แฟนเดย์..แฟนกันแค่วันเดียว", 135, 240, "LUMINA 2", 4, 8, startOfDay.Add(64*time.Hour), createdAt),
+	}
+}
+
+func newScreeningSeed(
+	id string,
+	title string,
+	durationMinutes int,
+	ticketPriceBaht int,
+	auditoriumName string,
+	rows int,
+	seatsPerRow int,
+	startsAt time.Time,
+	createdAt time.Time,
+) domain.Screening {
+	rowNames := []string{"A", "B", "C", "D", "E"}
+	if rows < len(rowNames) {
+		rowNames = rowNames[:rows]
+	}
+
+	return domain.Screening{
+		ID: mustObjectID(id),
+		Movie: domain.Movie{
+			Title:           title,
+			DurationMinutes: durationMinutes,
 		},
-		{
-			ID: mustObjectID("66a000000000000000000002"),
-			Movie: domain.Movie{
-				Title:           "The Last Orbit",
-				DurationMinutes: 132,
-			},
-			Auditorium: domain.Auditorium{
-				Name:        "Hall 2",
-				Rows:        4,
-				SeatsPerRow: 8,
-			},
-			StartsAt:  startOfDay.Add(24*time.Hour + 21*time.Hour),
-			Seats:     buildSeats([]string{"A", "B", "C", "D"}, 8),
-			CreatedAt: createdAt,
-			UpdatedAt: createdAt,
+		Auditorium: domain.Auditorium{
+			Name:        auditoriumName,
+			Rows:        rows,
+			SeatsPerRow: seatsPerRow,
 		},
+		StartsAt:        startsAt,
+		TicketPriceBaht: ticketPriceBaht,
+		Seats:           buildSeats(rowNames, seatsPerRow),
+		CreatedAt:       createdAt,
+		UpdatedAt:       createdAt,
 	}
 }
 
