@@ -144,7 +144,7 @@ func TestListMyTicketsUsesAuthenticatedUser(t *testing.T) {
 		Screening: domain.Screening{
 			ID:              screeningID,
 			Movie:           domain.Movie{Title: "ธี่หยด 2"},
-			Auditorium:      domain.Auditorium{Name: "LUMINA 2"},
+			Auditorium:      domain.Auditorium{Name: "โรง 2"},
 			StartsAt:        time.Now().UTC().Add(time.Hour),
 			TicketPriceBaht: 240,
 		},
@@ -160,7 +160,7 @@ func TestListMyTicketsUsesAuthenticatedUser(t *testing.T) {
 		t.Fatalf("unexpected response: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 	if !strings.Contains(recorder.Body.String(), "ธี่หยด 2") ||
-		!strings.Contains(recorder.Body.String(), "LUMINA-"+bookingID.Hex()) {
+		!strings.Contains(recorder.Body.String(), "TICKET-"+bookingID.Hex()) {
 		t.Fatalf("ticket details missing: %s", recorder.Body.String())
 	}
 }

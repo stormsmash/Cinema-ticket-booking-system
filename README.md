@@ -1,7 +1,9 @@
 # Cinema ticket booking system
 
-A take-home cinema booking system built with Go, Vue, MongoDB, and Redis. The main design goal is
-to stop two users from booking the same seat while keeping every open seat map up to date.
+A take-home cinema booking system built with Go, Vue, MongoDB, and Redis. Users can choose up to
+six seats, review the price before confirming, and open a separate E-Ticket for each booked seat.
+The booking flow prevents two users from buying the same seat while keeping every open seat map up
+to date.
 
 ## 1. System architecture diagram
 
@@ -23,51 +25,79 @@ application and proxies `/api/` requests to the API container.
 
 The source of truth is split by the lifetime of the data:
 
-- MongoDB owns durable data: users, screenings, booked seats, bookings, and audit logs.
+- MongoDB owns durable data: users, screenings and their prices, booked seats, bookings, and audit
+  logs.
 - Redis owns short-lived data: login sessions and seat holds with a TTL.
 - Redis Pub/Sub and WebSocket messages are notifications. A browser reloads the seat map after an
   event instead of treating the event as stored state.
 
 ## 2. Tech stack overview
 
-| Layer | Technology | Use in this project |
-| --- | --- | --- |
-| Backend | Go 1.26, Gin | HTTP API, authentication middleware, booking rules |
-| Frontend | Vue 3, TypeScript, Pinia, Vue Router | Seat map, login state, admin dashboard |
-| Database | MongoDB 8 replica set | Durable records and booking transactions |
-| Distributed lock | Redis 8, go-redis | Atomic seat holds with a five-minute TTL |
-| Realtime | WebSocket, Redis keyspace events | Notify open browsers when a seat changes |
-| Message queue | Redis Pub/Sub | Publish the real `seat.booked` event after commit |
-| Authentication | Google OAuth 2.0 | Create a user and issue a Redis-backed session |
-| Web server | Nginx | Serve Vue and proxy API/WebSocket traffic |
-| Deployment | Docker, Docker Compose | Start the complete local system with one command |
-| Tests | Go testing, Vitest, Vue Test Utils, Postman | Backend rules, API access, stores, and UI behavior |
+| Layer            | Technology                                  | Use in this project                                          |
+| ---------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| Backend          | Go 1.26, Gin                                | HTTP API, authentication middleware, booking rules           |
+| Frontend         | Vue 3, TypeScript, Pinia, Vue Router        | Multi-seat checkout, E-Tickets, login state, admin dashboard |
+| Database         | MongoDB 8 replica set                       | Durable records and booking transactions                     |
+| Distributed lock | Redis 8, go-redis                           | Atomic seat holds with a five-minute TTL                     |
+| Realtime         | WebSocket, Redis keyspace events            | Notify open browsers when a seat changes                     |
+| Message queue    | Redis Pub/Sub                               | Publish the real `seat.booked` event after commit            |
+| Authentication   | Google OAuth 2.0                            | Create a user and issue a Redis-backed session               |
+| Web server       | Nginx                                       | Serve Vue and proxy API/WebSocket traffic                    |
+| Deployment       | Docker, Docker Compose                      | Start the complete local system with one command             |
+| Tests            | Go testing, Vitest, Vue Test Utils, Postman | Backend rules, API access, stores, and UI behavior           |
 
 ## 3. Booking flow
 
 1. The user signs in with Google. The callback upserts the user in MongoDB and stores a random
    session token in Redis. The browser only receives an HttpOnly cookie.
-2. The browser loads screenings and the current seat map from the API.
-3. When the user chooses a seat, the API first checks that the screening and seat exist and that
-   MongoDB does not already mark the seat as `BOOKED`.
-4. Redis runs an atomic `SET ... NX` for `seat_lock:<screening_id>:<seat_id>`. The value is the user
+2. The browser loads screenings, the price for each screening, and the current seat map from the
+   API.
+3. The user can select up to six seats. Selecting a seat creates its own hold; removing it from the
+   selection releases that hold.
+4. For each selected seat, the API checks that the screening and seat exist and that MongoDB does
+   not already mark the seat as `BOOKED`.
+5. Redis runs an atomic `SET ... NX` for `seat_lock:<screening_id>:<seat_id>`. The value is the user
    ID and the TTL is five minutes. A competing user receives HTTP `409`.
-5. Redis keyspace events notify the WebSocket hub. Every open browser reloads the seat map and sees
+6. Redis keyspace events notify the WebSocket hub. Every open browser reloads the seat map and sees
    the seat as `LOCKED`.
-6. Payment is mocked by the confirm button. Confirmation atomically changes the user's lock into a
-   short booking claim before writing to MongoDB. A different user cannot use that claim.
-7. One MongoDB transaction conditionally changes the embedded seat from `AVAILABLE` to `BOOKED`,
-   inserts the booking, and inserts its `BOOKING_SUCCESS` audit log.
-8. A partial unique index on `(screening_id, seat_id)` for `BOOKED` records is the last double-booking
+7. The checkout shows the number of seats, price per seat, and total. Payment is mocked by the
+   confirm button. The frontend sends one confirmation request for each held seat.
+8. Each confirmation changes that seat's lock into a short booking claim. A MongoDB transaction
+   then changes the embedded seat from `AVAILABLE` to `BOOKED`, inserts one booking with a price
+   snapshot, and inserts its `BOOKING_SUCCESS` audit log.
+9. A partial unique index on `(screening_id, seat_id)` for `BOOKED` records is the last double-booking
    guard.
-9. After the transaction commits, the API deletes its booking claim and publishes a versioned
-   `seat.booked` event through Redis Pub/Sub. Browsers reload and display the durable `BOOKED` state.
-10. If MongoDB fails before commit, the API restores the original hold for the time it had left. If
-    the five-minute hold expires, Redis releases it automatically and the API records
+10. After a transaction commits, the API deletes its booking claim and publishes a versioned
+    `seat.booked` event through Redis Pub/Sub. Browsers reload and display the durable `BOOKED` state.
+11. If one request in a multi-seat checkout fails, the completed seats remain booked and the UI
+    reports the partial result. The group is not committed as one all-or-nothing transaction.
+12. If MongoDB fails before a seat is committed, the API restores that hold for the time it had
+    left. If the five-minute hold expires, Redis releases it automatically and the API records
     `BOOKING_TIMEOUT`.
 
 Confirming the same completed booking again is idempotent for its owner. It returns the existing
 booking without publishing a duplicate event.
+
+### Price, multiple seats, and E-Tickets
+
+The seeded screenings use fixed prices of 200, 220, 240, or 260 baht per seat. The screening API
+returns `ticket_price_baht`, and the checkout calculates the displayed total as:
+
+```text
+total = ticket_price_baht x selected seats
+```
+
+The server copies the screening price into `price_baht` when it creates each booking. This keeps the
+amount shown on an existing ticket unchanged if the screening price is edited later.
+
+A checkout can contain up to six seats, but the API still creates one booking record per seat. Each
+successful booking therefore has its own booking ID, price, ticket code, and E-Ticket. The code uses
+the format `TICKET-<booking_object_id>`.
+
+Signed-in users can reopen their tickets in **My Tickets**. Each ticket shows the movie, showtime,
+auditorium, seat, and price. The browser generates a QR image from each ticket code, and the code
+can also be copied as text. The QR flow is a demonstration: there is no staff scanner or
+ticket-validation endpoint in this project.
 
 ## 4. Redis lock strategy
 
@@ -205,53 +235,57 @@ the stored role is exactly `ADMIN`. The frontend route guard is only for navigat
 
 ## 7. Assumptions and trade-offs
 
-| Decision | Reason | Accepted cost |
-| --- | --- | --- |
-| Mock payment confirmation | The assignment tests booking correctness, not a payment provider | No payment webhook, refund, or reconciliation flow |
-| One seat per booking | Keeps the concurrency case small and easy to verify | A multi-seat cart would need an ordered multi-key lock strategy |
-| Seats embedded in a screening document | Allows one conditional seat update inside the booking transaction | Very large auditoriums would make the document and updates heavier |
-| Single Redis container | Enough to demonstrate a lock shared by multiple API processes | It is not highly available; Redis failure stops new holds |
-| Single-member MongoDB replica set | Transactions work locally with one Compose command | It demonstrates transactions, not database redundancy |
-| Redis Pub/Sub for booked events | It is one of the allowed MQ choices and fits realtime notification | Delivery is at most once and there is no replay |
-| Mock notification writes to the API log | Shows an MQ-triggered notification without provider credentials | It is not durable and multiple API replicas could write duplicates |
-| Reload after every realtime event | MongoDB and Redis stay authoritative | Each event causes another API read |
-| Admin allowlist in environment config | No separate role-management screen is needed for this assignment | Changing admins requires an environment update and API rebuild |
-| Local cookies use `Secure=false` | OAuth works on `http://localhost` | Production must use HTTPS, `Secure=true`, and should add explicit CSRF protection |
+| Decision                                                  | Reason                                                                        | Accepted cost                                                                        |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Mock payment confirmation                                 | The checkout can show a real total without connecting a payment provider      | No payment webhook, refund, or reconciliation flow                                   |
+| One booking record per seat, up to six seats per checkout | Reuses the same lock, transaction, and unique-index protection for every seat | A multi-seat checkout can partially succeed because the group is not one transaction |
+| Fixed price per screening                                 | The API and tickets can demonstrate price snapshots without a pricing engine  | No seat tiers, promotions, fees, or dynamic pricing                                  |
+| Client-generated E-Ticket QR                              | A user can reopen and show a ticket without an external service               | The QR contains a ticket code but there is no scanner or validation endpoint         |
+| Seats embedded in a screening document                    | Allows one conditional seat update inside the booking transaction             | Very large auditoriums would make the document and updates heavier                   |
+| Single Redis container                                    | Enough to demonstrate a lock shared by multiple API processes                 | It is not highly available; Redis failure stops new holds                            |
+| Single-member MongoDB replica set                         | Transactions work locally with one Compose command                            | It demonstrates transactions, not database redundancy                                |
+| Redis Pub/Sub for booked events                           | It is one of the allowed MQ choices and fits realtime notification            | Delivery is at most once and there is no replay                                      |
+| Mock notification writes to the API log                   | Shows an MQ-triggered notification without provider credentials               | It is not durable and multiple API replicas could write duplicates                   |
+| Reload after every realtime event                         | MongoDB and Redis stay authoritative                                          | Each event causes another API read                                                   |
+| Admin allowlist in environment config                     | No separate role-management screen is needed for this assignment              | Changing admins requires an environment update and API rebuild                       |
+| Local cookies use `Secure=false`                          | OAuth works on `http://localhost`                                             | Production must use HTTPS, `Secure=true`, and should add explicit CSRF protection    |
 
 All backend timestamps are stored in UTC. The browser formats them in the viewer's local timezone.
 The seeded screenings are demonstration data. The project does not include cinema management,
-refunds, pricing rules, or a real notification provider because those are outside the assignment.
+refunds, dynamic pricing, ticket scanning, or a real notification provider because those are
+outside the assignment.
 
 ## Audit events
 
-| Event | Written when |
-| --- | --- |
-| `BOOKING_SUCCESS` | The booking transaction commits |
-| `BOOKING_TIMEOUT` | A Redis seat hold expires |
-| `SEAT_RELEASED` | The owner manually releases an active hold |
-| `SYSTEM_ERROR` | An unexpected seat-lock storage operation fails |
+| Event             | Written when                                    |
+| ----------------- | ----------------------------------------------- |
+| `BOOKING_SUCCESS` | The booking transaction commits                 |
+| `BOOKING_TIMEOUT` | A Redis seat hold expires                       |
+| `SEAT_RELEASED`   | The owner manually releases an active hold      |
+| `SYSTEM_ERROR`    | An unexpected seat-lock storage operation fails |
 
 Expected conflicts, such as a seat already held by another user, are not system errors.
 
 ## API reference
 
-| Method | Path | Access | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/health/live` | Public | Process health |
-| `GET` | `/api/v1/health/ready` | Public | MongoDB and Redis readiness |
-| `GET` | `/api/v1/auth/config` | Public | Whether Google sign-in is configured |
-| `GET` | `/api/v1/auth/google` | Public | Start Google OAuth |
-| `GET` | `/api/v1/auth/google/callback` | Public | Complete Google OAuth |
-| `GET` | `/api/v1/auth/me` | Signed in | Current session user |
-| `POST` | `/api/v1/auth/logout` | Public | Delete the current session if present |
-| `GET` | `/api/v1/screenings` | Public | Upcoming screenings |
-| `GET` | `/api/v1/screenings/:screeningID/seats` | Public | Durable seat state plus current locks |
-| `POST` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Signed in | Hold one seat |
-| `DELETE` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Signed in | Release the owner's hold |
-| `GET` | `/api/v1/screenings/:screeningID/seat-events` | Public | WebSocket seat notifications |
-| `POST` | `/api/v1/bookings` | Signed in | Confirm the current user's held seat |
-| `GET` | `/api/v1/admin/bookings` | Admin | Paginated booking list and filters |
-| `GET` | `/api/v1/admin/audit-logs` | Admin | Paginated audit log and event filter |
+| Method   | Path                                                 | Access    | Purpose                                                    |
+| -------- | ---------------------------------------------------- | --------- | ---------------------------------------------------------- |
+| `GET`    | `/api/v1/health/live`                                | Public    | Process health                                             |
+| `GET`    | `/api/v1/health/ready`                               | Public    | MongoDB and Redis readiness                                |
+| `GET`    | `/api/v1/auth/config`                                | Public    | Whether Google sign-in is configured                       |
+| `GET`    | `/api/v1/auth/google`                                | Public    | Start Google OAuth                                         |
+| `GET`    | `/api/v1/auth/google/callback`                       | Public    | Complete Google OAuth                                      |
+| `GET`    | `/api/v1/auth/me`                                    | Signed in | Current session user                                       |
+| `POST`   | `/api/v1/auth/logout`                                | Public    | Delete the current session if present                      |
+| `GET`    | `/api/v1/screenings`                                 | Public    | Upcoming screenings                                        |
+| `GET`    | `/api/v1/screenings/:screeningID/seats`              | Public    | Durable seat state plus current locks                      |
+| `POST`   | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Signed in | Hold one seat                                              |
+| `DELETE` | `/api/v1/screenings/:screeningID/seats/:seatID/lock` | Signed in | Release the owner's hold                                   |
+| `GET`    | `/api/v1/screenings/:screeningID/seat-events`        | Public    | WebSocket seat notifications                               |
+| `POST`   | `/api/v1/bookings`                                   | Signed in | Confirm one held seat and return its price and ticket code |
+| `GET`    | `/api/v1/bookings/me`                                | Signed in | List the current user's E-Tickets                          |
+| `GET`    | `/api/v1/admin/bookings`                             | Admin     | Paginated booking list and filters                         |
+| `GET`    | `/api/v1/admin/audit-logs`                           | Admin     | Paginated audit log and event filter                       |
 
 ## Tests
 

@@ -122,7 +122,7 @@ describe('screening store realtime updates', () => {
       screening_id: 'screening-1',
       seat_id: 'A1',
       price_baht: 240,
-      ticket_code: 'LUMINA-booking-123',
+      ticket_code: 'TICKET-booking-123',
       status: 'BOOKED',
       created_at: '2026-07-15T12:00:00Z',
     }

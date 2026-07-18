@@ -15,10 +15,10 @@ onMounted(store.load)
     <summary>
       <img v-if="user?.avatar_url" :src="user.avatar_url" alt="" referrerpolicy="no-referrer" />
       <span v-else class="avatar-fallback" aria-hidden="true">
-        {{ user?.name.charAt(0) || 'L' }}
+        {{ user?.name.charAt(0) || 'C' }}
       </span>
       <span class="account-label">
-        <small>{{ user ? 'สมาชิก LUMINA' : 'บัญชีของฉัน' }}</small>
+        <small>{{ user ? 'บัญชีที่เข้าสู่ระบบ' : 'บัญชีของฉัน' }}</small>
         <strong>{{ isLoading ? 'กำลังตรวจสอบ...' : user?.name || 'เข้าสู่ระบบ' }}</strong>
       </span>
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4" /></svg>

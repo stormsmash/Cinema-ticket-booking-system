@@ -1,7 +1,7 @@
 <template>
-  <span class="brand-mark" aria-label="Lumina Cinema">
+  <span class="brand-mark" aria-label="Cinema Ticket Booking">
     <span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></span>
-    <span class="brand-type"><strong>LUMINA</strong><small>CINEMA</small></span>
+    <span class="brand-type"><strong>CINEMA</strong><small>BOOKING</small></span>
   </span>
 </template>
 

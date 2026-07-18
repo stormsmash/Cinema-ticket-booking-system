@@ -125,7 +125,7 @@ func (handler *bookingHandler) listMine(c *gin.Context) {
 }
 
 func ticketCode(item domain.Booking) string {
-	return "LUMINA-" + item.ID.Hex()
+	return "TICKET-" + item.ID.Hex()
 }
 
 func (handler *bookingHandler) writeServiceError(c *gin.Context, err error) {

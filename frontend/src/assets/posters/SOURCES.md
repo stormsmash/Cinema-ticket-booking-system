@@ -1,6 +1,6 @@
 # Movie poster sources
 
-The poster files in `thai/` are local copies used only to demonstrate the cinema-booking interface. Poster artwork and movie trademarks belong to their respective rights holders. They are not generated images and are not presented as original LUMINA CINEMA artwork.
+The poster files in `thai/` are local copies used only to demonstrate the cinema-booking interface. Poster artwork and movie trademarks belong to their respective rights holders. They are not generated images and are not presented as original artwork created for this project.
 
 | Local file                | Movie                             | Source page                                                 | Downloaded image                                                                    |
 | ------------------------- | --------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |

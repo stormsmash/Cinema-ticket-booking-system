@@ -9,19 +9,20 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: () => import('@/views/HomeView.vue'),
-      meta: { title: 'LUMINA CINEMA — จองบัตรภาพยนตร์' },
+      meta: { title: 'Cinema Ticket Booking System — จองบัตรภาพยนตร์' },
     },
     {
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/AdminView.vue'),
-      meta: { requiresAdmin: true, title: 'จัดการระบบ — LUMINA CINEMA' },
+      meta: { requiresAdmin: true, title: 'จัดการระบบ — Cinema Ticket Booking System' },
     },
   ],
 })
 
 router.afterEach((to) => {
-  document.title = typeof to.meta.title === 'string' ? to.meta.title : 'LUMINA CINEMA'
+  document.title =
+    typeof to.meta.title === 'string' ? to.meta.title : 'Cinema Ticket Booking System'
 })
 
 router.beforeEach(async (to) => {
